@@ -72,6 +72,14 @@ removes each named installer from the recovery plan after successful removal.
 Without `--purge`, its application configuration profile remains selected so
 the configuration can still be backed up.
 
+The `docker-engine` installer uses Docker's signed Ubuntu APT repository and
+the Linux Mint installation's Ubuntu base codename. Docker does not officially
+support Ubuntu derivatives such as Linux Mint, so this compatibility path is
+verified by the installer but cannot be guaranteed by Docker. The installer
+also adds the desktop user to the `docker` group so Docker can run without
+`sudo`; that membership is root-equivalent and takes effect after logging out
+and back in (or running `newgrp docker`).
+
 APT and Flatpak selection retain focused management commands:
 
 ```text
@@ -97,6 +105,7 @@ software are selected automatically. The bundled catalog currently includes:
 
 - DataGrip
 - Discord
+- Docker Engine CLI
 - Firefox
 - Google Cloud CLI
 - Heroic Games Launcher
@@ -108,7 +117,10 @@ software are selected automatically. The bundled catalog currently includes:
 
 Only configuration and durable state are captured. Caches and installed
 application payloads are excluded. Firefox is an application profile; there is
-no Firefox backup plugin.
+no Firefox backup plugin. Docker's `~/.docker` CLI state is included, which can
+contain registry credentials, so snapshot storage must be treated as sensitive.
+Docker images, containers, volumes, `/var/lib/docker`, and `/var/lib/containerd`
+are runtime data and are deliberately excluded.
 
 ## Cinnamon settings
 

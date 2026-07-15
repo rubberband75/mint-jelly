@@ -4,12 +4,13 @@
 # and installed application payloads are deliberately excluded.
 
 APPLICATION_PROFILE_IDS=(
-  datagrip discord firefox google-cloud-cli heroic makemkv minecraft-launcher nvm
-  postman slack
+  datagrip discord docker-engine firefox google-cloud-cli heroic makemkv
+  minecraft-launcher nvm postman slack
 )
 declare -Ag APPLICATION_PROFILE_NAME=(
   [datagrip]='DataGrip'
   [discord]='Discord'
+  [docker-engine]='Docker Engine CLI'
   [firefox]='Firefox'
   [google-cloud-cli]='Google Cloud CLI'
   [heroic]='Heroic Games Launcher'
@@ -22,6 +23,7 @@ declare -Ag APPLICATION_PROFILE_NAME=(
 declare -Ag APPLICATION_PROFILE_PATHS=(
   [datagrip]='~/.config/JetBrains/DataGrip* ~/.local/share/JetBrains/DataGrip*'
   [discord]='~/.config/discord ~/.var/app/com.discordapp.Discord/config/discord'
+  [docker-engine]='~/.docker'
   [firefox]='~/.mozilla/firefox ~/.var/app/org.mozilla.firefox/.mozilla/firefox'
   [google-cloud-cli]='~/.config/gcloud'
   [heroic]='~/.config/heroic ~/.var/app/com.heroicgameslauncher.hgl/config/heroic'
@@ -34,6 +36,7 @@ declare -Ag APPLICATION_PROFILE_PATHS=(
 declare -Ag APPLICATION_PROFILE_INSTALLER=(
   [datagrip]='datagrip'
   [discord]='discord'
+  [docker-engine]='docker-engine'
   [google-cloud-cli]='google-cloud-cli'
   [heroic]='heroic'
   [makemkv]='makemkv'

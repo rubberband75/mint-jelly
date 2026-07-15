@@ -30,6 +30,7 @@ while IFS= read -r script; do bash -n "$script" || fail "Syntax error: $script";
 bash -n "$PROJECT_ROOT/mint-jelly"
 
 bash "$PROJECT_ROOT/tests/datagrip-installer.sh" >/dev/null
+bash "$PROJECT_ROOT/tests/docker-engine-installer.sh" >/dev/null
 bash "$PROJECT_ROOT/tests/google-cloud-cli-installer.sh" >/dev/null
 bash "$PROJECT_ROOT/tests/nvm-installer.sh" >/dev/null
 

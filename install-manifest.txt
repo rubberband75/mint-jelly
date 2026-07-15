@@ -32,6 +32,8 @@ installers/datagrip/installer.conf
 installers/datagrip/run.sh
 installers/discord/installer.conf
 installers/discord/run.sh
+installers/docker-engine/installer.conf
+installers/docker-engine/run.sh
 installers/google-cloud-cli/installer.conf
 installers/google-cloud-cli/run.sh
 installers/heroic/installer.conf

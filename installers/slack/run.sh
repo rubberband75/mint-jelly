@@ -147,6 +147,21 @@ verify_installation() {
   printf '%s is installed (version %s, %s).\n' "$INSTALLER_NAME" "$version" "$architecture"
 }
 
+uninstall_package() {
+  local rc
+  require_command sudo
+  if check_installation; then
+    if [[ "${MINT_JELLY_PURGE:-false}" == 'true' ]]; then
+      sudo -- apt-get purge --yes "$PACKAGE_NAME"
+    else
+      sudo -- apt-get remove --yes "$PACKAGE_NAME"
+    fi
+  else
+    rc=$?; ((rc == 1)) || return "$rc"
+  fi
+  [[ "${MINT_JELLY_PURGE:-false}" != 'true' ]] || rm -rf -- "$HOME/.config/Slack"
+}
+
 validate_deb() {
   local architecture package version
   local deb_file="$1"
@@ -169,7 +184,7 @@ validate_deb() {
 install_package() {
   local architecture deb_file page_file package_url rc version
 
-  if check_installation; then
+  if check_installation && [[ "${MINT_JELLY_FORCE_UPDATE:-false}" != 'true' ]]; then
     log "$INSTALLER_NAME is already installed; skipping."
     return 0
   else
@@ -256,7 +271,7 @@ PY
 }
 
 usage() {
-  printf 'Usage: %s {check|install|verify}\n' "${0##*/}" >&2
+  printf 'Usage: %s {check|install|update|uninstall|verify}\n' "${0##*/}" >&2
 }
 
 main() {
@@ -268,6 +283,8 @@ main() {
   case "$1" in
     check) check_installation ;;
     install) install_package ;;
+    update) MINT_JELLY_FORCE_UPDATE=true install_package ;;
+    uninstall) uninstall_package ;;
     verify) verify_installation ;;
     *)
       usage

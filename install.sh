@@ -5,7 +5,7 @@ set -euo pipefail
 umask 022
 
 REPOSITORY="${MINT_JELLY_REPOSITORY:-rubberband75/mint-jelly}"
-REQUESTED_VERSION="${MINT_JELLY_VERSION:-0.0.2}"
+REQUESTED_VERSION="${MINT_JELLY_VERSION:-0.1.0}"
 TEMP_DIR=''
 STAGE_DIR=''
 EXPECTED_VERSION=''
@@ -160,10 +160,11 @@ validate_source_tree() {
     backup.sh
     restore.sh
     commands/software.sh
+    commands/files.sh
+    commands/system-settings.sh
     commands/apt.sh
     commands/flatpak.sh
     configure.sh
-    configure-backup-plugins.sh
     configure-installers.sh
     configure-apt.sh
     uninstall.sh
@@ -183,7 +184,7 @@ validate_source_tree() {
     [[ "$path" != /* && ! "$path" =~ (^|/)\.\.?(/|$) ]] \
       || die "Unsafe installation manifest path: $path"
     case "$path" in
-      VERSION|README.md|mint-jelly|backup.sh|restore.sh|configure.sh|configure-backup-plugins.sh|configure-installers.sh|configure-apt.sh|uninstall.sh|backup.conf.default|completions/mint-jelly.bash)
+      VERSION|README.md|mint-jelly|backup.sh|restore.sh|configure.sh|configure-installers.sh|configure-apt.sh|uninstall.sh|backup.conf.default|completions/mint-jelly.bash)
         ;;
       commands/*.sh)
         [[ "$path" =~ ^commands/[A-Za-z0-9][A-Za-z0-9._-]*\.sh$ ]] \
@@ -191,10 +192,6 @@ validate_source_tree() {
         ;;
       lib/*.sh)
         [[ "$path" =~ ^lib/[A-Za-z0-9][A-Za-z0-9._-]*\.sh$ ]] \
-          || die "Installation manifest contains a non-runtime path: $path"
-        ;;
-      backup-plugins/*.sh)
-        [[ "$path" =~ ^backup-plugins/[A-Za-z0-9][A-Za-z0-9._-]*\.sh$ ]] \
           || die "Installation manifest contains a non-runtime path: $path"
         ;;
       installers/*/installer.conf|installers/*/run.sh)
@@ -219,7 +216,7 @@ validate_source_tree() {
       || die "Required runtime file is missing from install-manifest.txt: $required_path"
   done
 
-  for runtime_directory in commands lib backup-plugins installers; do
+  for runtime_directory in commands lib installers; do
     [[ -d "$SOURCE_DIR/$runtime_directory" \
       && ! -L "$SOURCE_DIR/$runtime_directory" ]] \
       || die "Source tree has a missing or unsafe runtime directory: $runtime_directory"
@@ -234,11 +231,6 @@ validate_source_tree() {
     [[ -n "${manifest_paths[$required_path]+set}" ]] \
       || die "Runtime command is missing from install-manifest.txt: $required_path"
   done < <(find "$SOURCE_DIR/commands" -mindepth 1 -maxdepth 1 -type f -name '*.sh' -print0)
-  while IFS= read -r -d '' required_file; do
-    required_path="${required_file#"$SOURCE_DIR/"}"
-    [[ -n "${manifest_paths[$required_path]+set}" ]] \
-      || die "Backup plugin is missing from install-manifest.txt: $required_path"
-  done < <(find "$SOURCE_DIR/backup-plugins" -mindepth 1 -maxdepth 1 -type f -name '*.sh' -print0)
   while IFS= read -r -d '' installer_dir; do
     for required_path in installer.conf run.sh; do
       required_file="$installer_dir/$required_path"
@@ -269,7 +261,7 @@ launcher_is_owned() {
 
 runtime_path_mode() {
   case "$1" in
-    mint-jelly|backup.sh|restore.sh|configure.sh|configure-backup-plugins.sh|configure-installers.sh|configure-apt.sh|uninstall.sh|commands/*.sh|installers/*/run.sh)
+    mint-jelly|backup.sh|restore.sh|configure.sh|configure-installers.sh|configure-apt.sh|uninstall.sh|commands/*.sh|installers/*/run.sh)
       printf '0755'
       ;;
     *)

@@ -341,7 +341,7 @@ activate_bundle() {
 install_bundle() {
   local architecture archive_file rc source_dir version
 
-  if check_installation; then
+  if check_installation && [[ "${MINT_JELLY_FORCE_UPDATE:-false}" != 'true' ]]; then
     log "$INSTALLER_NAME is already installed; skipping."
     return 0
   else
@@ -402,8 +402,22 @@ install_bundle() {
   verify_installation
 }
 
+uninstall_bundle() {
+  local desktop_file="${XDG_DATA_HOME:-$HOME/.local/share}/applications/postman.desktop" rc
+  require_command sudo
+  if check_installation; then :; else
+    rc=$?; ((rc == 1)) || return "$rc"
+  fi
+  [[ "$INSTALL_DIR" == /opt/Postman && "$COMMAND_LINK" == /usr/local/bin/postman ]] \
+    || die 'Refusing unexpected Postman uninstall paths'
+  sudo -- rm -rf -- "$INSTALL_DIR"
+  sudo -- rm -f -- "$COMMAND_LINK"
+  rm -f -- "$desktop_file"
+  if [[ "${MINT_JELLY_PURGE:-false}" == 'true' ]]; then rm -rf -- "$HOME/.config/Postman"; fi
+}
+
 usage() {
-  printf 'Usage: %s {check|install|verify}\n' "${0##*/}" >&2
+  printf 'Usage: %s {check|install|update|uninstall|verify}\n' "${0##*/}" >&2
 }
 
 main() {
@@ -415,6 +429,8 @@ main() {
   case "$1" in
     check) check_installation ;;
     install) install_bundle ;;
+    update) MINT_JELLY_FORCE_UPDATE=true install_bundle ;;
+    uninstall) uninstall_bundle ;;
     verify) verify_installation ;;
     *)
       usage

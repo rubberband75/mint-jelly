@@ -450,7 +450,7 @@ install_nvm() {
   local script_size tag version
   local -a release_fields=()
 
-  if check_installation; then
+  if check_installation && [[ "${MINT_JELLY_FORCE_UPDATE:-false}" != 'true' ]]; then
     log "$INSTALLER_NAME is already installed; skipping."
     return 0
   else
@@ -549,6 +549,31 @@ install_nvm() {
   log 'Open a new terminal, or source ~/.bashrc, before using nvm in the current shell.'
 }
 
+uninstall_nvm() {
+  local line mode temp_file
+  local -a expected_lines=()
+  if [[ -e "$NVM_INSTALL_DIR" || -L "$NVM_INSTALL_DIR" ]]; then
+    [[ -d "$NVM_INSTALL_DIR" && ! -L "$NVM_INSTALL_DIR" && "$NVM_INSTALL_DIR" == "$HOME/"* ]] \
+      || die "Refusing unsafe NVM uninstall path: $NVM_INSTALL_DIR"
+    path_is_user_owned "$NVM_INSTALL_DIR" || die 'Refusing to remove an NVM directory not owned by the current user'
+    rm -rf -- "$NVM_INSTALL_DIR"
+  fi
+  if [[ -f "$PROFILE_FILE" && ! -L "$PROFILE_FILE" ]]; then
+    mapfile -t expected_lines < <(profile_expected_lines)
+    mode="$(stat -c '%a' -- "$PROFILE_FILE")"
+    temp_file="$(mktemp "${PROFILE_FILE}.mint-jelly.XXXXXXXX")"
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      skip='false'
+      for expected in "${expected_lines[@]}"; do [[ "$line" == "$expected" ]] && skip='true'; done
+      [[ "$skip" == true ]] || printf '%s\n' "$line" >> "$temp_file"
+    done < "$PROFILE_FILE"
+    chmod "$mode" -- "$temp_file"; mv -f -- "$temp_file" "$PROFILE_FILE"
+  fi
+  if [[ "${MINT_JELLY_PURGE:-false}" == 'true' ]]; then
+    rm -rf -- "$HOME/.npm" "$HOME/.config/configstore"; rm -f -- "$HOME/.npmrc"
+  fi
+}
+
 cleanup() {
   local status=$?
 
@@ -558,7 +583,7 @@ cleanup() {
 }
 
 usage() {
-  printf 'Usage: %s {check|install|verify}\n' "${0##*/}" >&2
+  printf 'Usage: %s {check|install|update|uninstall|verify}\n' "${0##*/}" >&2
 }
 
 main() {
@@ -574,6 +599,8 @@ main() {
   case "$1" in
     check) check_installation ;;
     install) install_nvm ;;
+    update) MINT_JELLY_FORCE_UPDATE=true install_nvm ;;
+    uninstall) uninstall_nvm ;;
     verify) verify_installation ;;
     *)
       usage

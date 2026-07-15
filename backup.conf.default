@@ -1,6 +1,8 @@
-# Sources and discovery plugins used for a new Mint Jelly configuration.
-version=1
+# Mint Jelly v2 recovery configuration.
+version=2
 history_keep=5
-source=~/.ssh
-backup_plugin=firefox
-backup_plugin=cinnamon-desktop
+file=~/.ssh
+application=firefox
+system_setting=themes
+system_setting=desktop
+system_setting=panel

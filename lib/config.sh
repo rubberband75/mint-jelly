@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 
-CONFIG_VERSION='1'
+CONFIG_VERSION='2'
 DEFAULT_REMOTE=''
 HISTORY_KEEP='5'
-BACKUP_SOURCE_SPECS=()
-BACKUP_PLUGINS=()
+FILE_SPECS=()
+APPLICATIONS=()
+SYSTEM_SETTINGS=()
 APT_PACKAGES=()
 INSTALLERS=()
 INSTALLER_OPTION_SELECTIONS=()
@@ -17,11 +18,12 @@ declare -Ag REMOTE_PORT=()
 declare -Ag REMOTE_ROOT_PATH=()
 
 config_reset() {
-  CONFIG_VERSION='1'
+  CONFIG_VERSION='2'
   DEFAULT_REMOTE=''
   HISTORY_KEEP='5'
-  BACKUP_SOURCE_SPECS=()
-  BACKUP_PLUGINS=()
+  FILE_SPECS=()
+  APPLICATIONS=()
+  SYSTEM_SETTINGS=()
   APT_PACKAGES=()
   INSTALLERS=()
   INSTALLER_OPTION_SELECTIONS=()
@@ -59,7 +61,7 @@ validate_flatpak_app_spec() {
   validate_safe_name "$remote" && validate_safe_name "$branch"
 }
 
-resolve_backup_source_spec() {
+resolve_file_spec() {
   local spec="$1"
 
   if [[ "$spec" == '~/'* ]]; then
@@ -69,10 +71,10 @@ resolve_backup_source_spec() {
   fi
 }
 
-validate_backup_source_spec() {
+validate_file_spec() {
   local resolved
 
-  resolved="$(resolve_backup_source_spec "$1")"
+  resolved="$(resolve_file_spec "$1")"
   validate_absolute_path "$resolved"
 }
 
@@ -116,30 +118,37 @@ config_validate_remote() {
 }
 
 config_validate() {
-  local source plugin package installer selection option owner name flatpak_app
+  local source application setting package installer selection option owner name flatpak_app
   local flatpak_scope flatpak_remote flatpak_id flatpak_branch flatpak_target
-  local -A seen_sources=() seen_plugins=() seen_packages=() seen_installers=()
+  local -A seen_sources=() seen_applications=() seen_settings=() seen_packages=() seen_installers=()
   local -A seen_installer_options=()
   local -A seen_flatpak_apps=()
   local -A seen_flatpak_targets=()
 
-  [[ "$CONFIG_VERSION" == '1' ]] \
+  [[ "$CONFIG_VERSION" == '2' ]] \
     || die "Unsupported configuration version: $CONFIG_VERSION"
   [[ "$HISTORY_KEEP" =~ ^(0|[1-9][0-9]*)$ ]] \
     || die 'history_keep must be a non-negative integer without leading zeroes.'
-  for source in "${BACKUP_SOURCE_SPECS[@]}"; do
-    validate_backup_source_spec "$source" \
-      || die "Backup source must be ~/... or a safe absolute path other than /: $source"
+  for source in "${FILE_SPECS[@]}"; do
+    validate_file_spec "$source" \
+      || die "File path must be ~/... or a safe absolute path other than /: $source"
     [[ -z "${seen_sources[$source]+set}" ]] \
       || die "Backup source is listed more than once: $source"
     seen_sources["$source"]=1
   done
 
-  for plugin in "${BACKUP_PLUGINS[@]}"; do
-    validate_safe_name "$plugin" || die "Invalid backup plugin name: $plugin"
-    [[ -z "${seen_plugins[$plugin]+set}" ]] \
-      || die "Backup plugin is listed more than once: $plugin"
-    seen_plugins["$plugin"]=1
+  for application in "${APPLICATIONS[@]}"; do
+    validate_safe_name "$application" || die "Invalid application profile name: $application"
+    [[ -z "${seen_applications[$application]+set}" ]] \
+      || die "Application profile is listed more than once: $application"
+    seen_applications["$application"]=1
+  done
+
+  for setting in "${SYSTEM_SETTINGS[@]}"; do
+    validate_safe_name "$setting" || die "Invalid system-settings profile name: $setting"
+    [[ -z "${seen_settings[$setting]+set}" ]] \
+      || die "System-settings profile is listed more than once: $setting"
+    seen_settings["$setting"]=1
   done
 
   for package in "${APT_PACKAGES[@]}"; do
@@ -247,8 +256,9 @@ config_read() {
             history_keep) HISTORY_KEEP="$value" ;;
           esac
           ;;
-        source) BACKUP_SOURCE_SPECS+=("$value") ;;
-        backup_plugin) BACKUP_PLUGINS+=("$value") ;;
+        file) FILE_SPECS+=("$value") ;;
+        application) APPLICATIONS+=("$value") ;;
+        system_setting) SYSTEM_SETTINGS+=("$value") ;;
         apt_package) APT_PACKAGES+=("$value") ;;
         installer) INSTALLERS+=("$value") ;;
         installer_option) INSTALLER_OPTION_SELECTIONS+=("$value") ;;
@@ -263,7 +273,7 @@ config_read() {
 
 config_write() {
   local file="${1:-$MINT_JELLY_CONFIG_FILE}"
-  local temp_file source plugin package installer selection flatpak_app name
+  local temp_file source application setting package installer selection flatpak_app name
 
   config_validate
   ensure_config_dir
@@ -275,11 +285,14 @@ config_write() {
     printf 'version=%s\n' "$CONFIG_VERSION"
     [[ -n "$DEFAULT_REMOTE" ]] && printf 'default_remote=%s\n' "$DEFAULT_REMOTE"
     printf 'history_keep=%s\n' "$HISTORY_KEEP"
-    for source in "${BACKUP_SOURCE_SPECS[@]}"; do
-      printf 'source=%s\n' "$source"
+    for source in "${FILE_SPECS[@]}"; do
+      printf 'file=%s\n' "$source"
     done
-    for plugin in "${BACKUP_PLUGINS[@]}"; do
-      printf 'backup_plugin=%s\n' "$plugin"
+    for application in "${APPLICATIONS[@]}"; do
+      printf 'application=%s\n' "$application"
+    done
+    for setting in "${SYSTEM_SETTINGS[@]}"; do
+      printf 'system_setting=%s\n' "$setting"
     done
     for package in "${APT_PACKAGES[@]}"; do
       printf 'apt_package=%s\n' "$package"

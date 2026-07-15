@@ -28,17 +28,20 @@ Mint Jelly — A tool to preserve your Linux Mint setup
 
 Usage:
   mint-jelly backup [--remote NAME] [--dry-run]
-  mint-jelly restore [--remote NAME] [--source-host HOSTNAME] [--dry-run] [--yes] [--allow-platform-mismatch]
+  mint-jelly restore [--remote NAME] [--source-host HOSTNAME] [--dry-run] [--yes] [--force]
   mint-jelly software install INSTALLER...
+  mint-jelly software update [INSTALLER...]
+  mint-jelly software uninstall INSTALLER... [--purge]
   mint-jelly software list|config|backup|list-remote|restore
-  mint-jelly apt install|add|remove|list|config|backup|list-remote|restore
-  mint-jelly flatpak install|add|remove|list|config|backup|list-remote|restore
+  mint-jelly files config|add|remove|list|list-remote|backup|restore
+  mint-jelly system-settings config|list|list-remote|backup|restore
+  mint-jelly apt install|add|remove|list|config
+  mint-jelly flatpak install|add|remove|list|config
   mint-jelly config init
   mint-jelly config remote add
   mint-jelly config remote list
   mint-jelly config remote set-default NAME
   mint-jelly config remote test NAME
-  mint-jelly config backup-plugins
   mint-jelly version
   mint-jelly uninstall [--purge] [--yes]
 
@@ -108,6 +111,14 @@ case "${1-}" in
   software)
     shift
     MINT_JELLY_COMMAND='mint-jelly software' exec "$APP_ROOT/commands/software.sh" "$@"
+    ;;
+  files)
+    shift
+    MINT_JELLY_COMMAND='mint-jelly files' exec "$APP_ROOT/commands/files.sh" "$@"
+    ;;
+  system-settings)
+    shift
+    MINT_JELLY_COMMAND='mint-jelly system-settings' exec "$APP_ROOT/commands/system-settings.sh" "$@"
     ;;
   apt)
     shift

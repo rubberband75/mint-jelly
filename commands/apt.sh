@@ -142,6 +142,11 @@ main() {
 
   [[ -n "$action" ]] && shift || true
   case "$action" in
+    backup|list-remote|restore)
+      die "APT recovery is part of the software domain. Use: mint-jelly software $action"
+      ;;
+  esac
+  case "$action" in
     install)
       while [[ $# -gt 0 ]]; do
         case "$1" in

@@ -60,7 +60,7 @@ _mint_jelly() {
   action="${COMP_WORDS[2]-}"
 
   if (( COMP_CWORD == 1 )); then
-    _mint_jelly_static_words 'backup restore software apt flatpak config version uninstall help --help --version'
+    _mint_jelly_static_words 'backup restore files software system-settings apt flatpak config version uninstall help --help --version'
     return
   fi
 
@@ -69,28 +69,56 @@ _mint_jelly() {
       _mint_jelly_remote_options '--remote --dry-run --help'
       ;;
     restore)
-      _mint_jelly_remote_options '--remote --source-host --dry-run --yes --allow-platform-mismatch --help'
+      _mint_jelly_remote_options '--remote --source-host --dry-run --yes --force --include-hardware --allow-platform-mismatch --allow-weak-verification --help'
       ;;
     software)
       if (( COMP_CWORD == 2 )); then
-        _mint_jelly_static_words 'install list config backup list-remote restore --help'
-      elif [[ "$action" == 'install' ]]; then
+        _mint_jelly_static_words 'install update uninstall list config backup list-remote restore --help'
+      elif [[ "$action" == 'install' || "$action" == 'update' ]]; then
         if [[ "$cur" == --* ]]; then
           _mint_jelly_static_words '--allow-weak-verification --help'
         else
           _mint_jelly_dynamic_values installer-catalog
+        fi
+      elif [[ "$action" == 'uninstall' ]]; then
+        if [[ "$cur" == --* ]]; then
+          _mint_jelly_static_words '--purge --yes --help'
+        else
+          _mint_jelly_dynamic_values installers
         fi
       elif [[ "$action" == 'backup' ]]; then
         _mint_jelly_remote_options '--remote --help'
       elif [[ "$action" == 'list-remote' ]]; then
         _mint_jelly_remote_options '--remote --source-host --help'
       elif [[ "$action" == 'restore' ]]; then
-        _mint_jelly_remote_options '--remote --source-host --dry-run --yes --allow-platform-mismatch --allow-weak-verification --help'
+        _mint_jelly_remote_options '--remote --source-host --dry-run --yes --force --allow-platform-mismatch --allow-weak-verification --help'
+      fi
+      ;;
+    files)
+      if (( COMP_CWORD == 2 )); then
+        _mint_jelly_static_words 'config add remove list list-remote backup restore --help'
+      elif [[ "$action" == 'backup' ]]; then
+        _mint_jelly_remote_options '--remote --dry-run --help'
+      elif [[ "$action" == 'list-remote' ]]; then
+        _mint_jelly_remote_options '--remote --source-host --help'
+      elif [[ "$action" == 'restore' ]]; then
+        _mint_jelly_remote_options '--remote --source-host --dry-run --yes --force --allow-platform-mismatch --help'
+      fi
+      ;;
+    system-settings)
+      if (( COMP_CWORD == 2 )); then
+        _mint_jelly_static_words 'config list list-remote backup restore --help'
+      elif [[ "$action" == 'backup' ]]; then
+        _mint_jelly_remote_options '--remote --dry-run --help'
+      elif [[ "$action" == 'list-remote' ]]; then
+        _mint_jelly_remote_options '--remote --source-host --help'
+      elif [[ "$action" == 'restore' ]]; then
+        _mint_jelly_remote_options '--remote --source-host --dry-run --yes --force --include-hardware --allow-platform-mismatch --help'
       fi
       ;;
     apt)
       if (( COMP_CWORD == 2 )); then
-        _mint_jelly_static_words 'install add remove list config backup list-remote restore --help'
+        _mint_jelly_static_words 'install add remove list config --help'
       elif [[ "$action" == 'install' || "$action" == 'add' ]]; then
         if [[ "$cur" == --* ]]; then
           [[ "$action" == 'install' ]] && _mint_jelly_static_words '--yes --help'
@@ -111,7 +139,7 @@ _mint_jelly() {
       ;;
     flatpak)
       if (( COMP_CWORD == 2 )); then
-        _mint_jelly_static_words 'install add remove list config backup list-remote restore --help'
+        _mint_jelly_static_words 'install add remove list config --help'
       elif [[ "$action" == 'install' || "$action" == 'add' ]]; then
         if [[ "$cur" == --* ]]; then
           _mint_jelly_static_words '--user --system --yes --help'
@@ -131,7 +159,7 @@ _mint_jelly() {
     config)
       config_command="${COMP_WORDS[2]-}"
       if (( COMP_CWORD == 2 )); then
-        _mint_jelly_static_words 'init remote backup-plugins --help'
+        _mint_jelly_static_words 'init remote --help'
       elif [[ "$config_command" == 'remote' ]]; then
         remote_command="${COMP_WORDS[3]-}"
         if (( COMP_CWORD == 3 )); then

@@ -53,6 +53,8 @@ if [[ $# -gt 0 ]]; then
 fi
 
 require_initialized_config
+local_operation_lock_acquire
+trap local_operation_lock_release EXIT
 config_read
 load_installers
 
@@ -167,6 +169,8 @@ done
 INSTALLERS=("${NEW_INSTALLERS[@]}")
 INSTALLER_OPTION_SELECTIONS=("${NEW_INSTALLER_OPTION_SELECTIONS[@]}")
 config_write
+local_operation_lock_release
+trap - EXIT
 if (( ${#INSTALLERS[@]} == 0 )); then
   log "All software installers disabled in $MINT_JELLY_CONFIG_FILE"
 else

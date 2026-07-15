@@ -1,5 +1,5 @@
 # Runtime files copied into each installed version.
-# install.sh verifies that every runtime library, catalog, backup plugin, and
+# install.sh verifies that every runtime library, catalog, and
 # installer module is listed here, rejects test/development paths, and assigns
 # executable modes from each path's runtime role rather than source metadata.
 VERSION
@@ -8,24 +8,26 @@ mint-jelly
 backup.sh
 restore.sh
 commands/software.sh
+commands/files.sh
+commands/system-settings.sh
 commands/apt.sh
 commands/flatpak.sh
 configure.sh
-configure-backup-plugins.sh
 configure-installers.sh
 configure-apt.sh
 uninstall.sh
 backup.conf.default
 lib/common.sh
 lib/config.sh
-lib/backup-plugins.sh
 lib/checklist.sh
 lib/installers.sh
 lib/recovery.sh
 lib/remote.sh
 lib/plans.sh
-backup-plugins/firefox.sh
-backup-plugins/cinnamon-desktop.sh
+lib/snapshots.sh
+lib/software-actions.sh
+lib/application-profiles.sh
+lib/system-settings.sh
 installers/datagrip/installer.conf
 installers/datagrip/run.sh
 installers/discord/installer.conf

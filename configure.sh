@@ -21,7 +21,6 @@ Usage:
   $command_name remote list
   $command_name remote set-default NAME
   $command_name remote test NAME
-  $command_name backup-plugins
 EOF
 }
 
@@ -160,7 +159,7 @@ trap remote_close EXIT
 require_cmd hostname
 
 case "${1-}:${2-}" in
-  init:|remote:add|remote:set-default|backup-plugins:)
+  init:|remote:add|remote:set-default)
     local_operation_lock_acquire
     trap 'remote_close; local_operation_lock_release' EXIT
     ;;
@@ -220,11 +219,6 @@ case "${1-}" in
         die "Unknown remote command: $2"
         ;;
     esac
-    ;;
-  backup-plugins)
-    shift
-    MINT_JELLY_COMMAND='mint-jelly config backup-plugins' \
-      exec "$SCRIPT_DIR/configure-backup-plugins.sh" "$@"
     ;;
   -h|--help|'')
     usage

@@ -490,10 +490,10 @@ activate_bundle() {
 install_bundle() {
   local actual_digest architecture archive_file archive_name archive_size
   local checksum_file checksum_url expected_digest metadata_file rc source_dir
-  local version launcher_path icon_path startup_class metadata_output product_output
+  local version launcher_path icon_path startup_class metadata_output product_output old_target=''
   local -a product_fields=() release_fields=()
 
-  if check_installation; then
+  if check_installation && [[ "${MINT_JELLY_FORCE_UPDATE:-false}" != 'true' ]]; then
     log "$INSTALLER_NAME is already installed; skipping."
     return 0
   else
@@ -539,6 +539,13 @@ install_bundle() {
   mapfile -t release_fields <<< "$metadata_output"
   ((${#release_fields[@]} == 4)) || die 'DataGrip release metadata was incomplete'
   version="${release_fields[0]}"
+  if [[ -L "$STABLE_LINK" ]]; then
+    old_target="$(readlink -f -- "$STABLE_LINK" 2>/dev/null || true)"
+    if [[ "$old_target" == "/opt/DataGrip-$version" ]]; then
+      log "$INSTALLER_NAME $version is already current."
+      return 0
+    fi
+  fi
   archive_file="$TEMP_DIR/datagrip-$version.tar.gz"
   archive_name="${archive_file##*/}"
   checksum_url="${release_fields[2]}"
@@ -593,6 +600,10 @@ install_bundle() {
 
   log "Installing $INSTALLER_NAME $version..."
   activate_bundle "$source_dir" "$version" "$launcher_path"
+  if [[ -n "$old_target" && "$old_target" != "$SYSTEM_TARGET_DIR" \
+    && "$old_target" =~ ^/opt/DataGrip-[0-9]+([.][0-9]+)+$ ]]; then
+    sudo -- rm -rf -- "$old_target" || warn "Could not remove superseded DataGrip bundle: $old_target"
+  fi
   if ! write_desktop_file "$version" "$icon_path" "$startup_class"; then
     warn 'DataGrip was installed, but its per-user desktop launcher could not be written.'
   fi
@@ -600,8 +611,27 @@ install_bundle() {
   verify_installation
 }
 
+uninstall_bundle() {
+  local target='' desktop_file="${XDG_DATA_HOME:-$HOME/.local/share}/applications/jetbrains-datagrip.desktop" rc
+  require_command sudo
+  if check_installation; then :; else
+    rc=$?; ((rc == 1)) || return "$rc"
+  fi
+  if [[ -L "$STABLE_LINK" ]]; then
+    target="$(readlink -f -- "$STABLE_LINK" 2>/dev/null || true)"
+    [[ "$target" =~ ^/opt/DataGrip-[0-9]+([.][0-9]+)+$ ]] \
+      || die "Refusing unexpected DataGrip target: $target"
+  fi
+  sudo -- rm -f -- "$COMMAND_LINK" "$STABLE_LINK"
+  [[ -z "$target" ]] || sudo -- rm -rf -- "$target"
+  rm -f -- "$desktop_file"
+  if [[ "${MINT_JELLY_PURGE:-false}" == 'true' ]]; then
+    rm -rf -- "$HOME/.config/JetBrains"/DataGrip* "$HOME/.local/share/JetBrains"/DataGrip*
+  fi
+}
+
 usage() {
-  printf 'Usage: %s {check|install|verify}\n' "${0##*/}" >&2
+  printf 'Usage: %s {check|install|update|uninstall|verify}\n' "${0##*/}" >&2
 }
 
 main() {
@@ -617,6 +647,8 @@ main() {
   case "$1" in
     check) check_installation ;;
     install) install_bundle ;;
+    update) MINT_JELLY_FORCE_UPDATE=true install_bundle ;;
+    uninstall) uninstall_bundle ;;
     verify) verify_installation ;;
     *)
       usage

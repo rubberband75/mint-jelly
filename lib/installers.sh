@@ -11,6 +11,7 @@ declare -Ag INSTALLER_PRIVILEGE=()
 declare -Ag INSTALLER_INTERACTIVE=()
 declare -Ag INSTALLER_ARCHITECTURES=()
 declare -Ag INSTALLER_VERIFICATION=()
+declare -Ag INSTALLER_LIFECYCLE=()
 declare -Ag INSTALLER_RUN_SCRIPT=()
 declare -Ag INSTALLER_OPTION_IDS=()
 
@@ -23,6 +24,7 @@ installer_reset_registry() {
   INSTALLER_INTERACTIVE=()
   INSTALLER_ARCHITECTURES=()
   INSTALLER_VERIFICATION=()
+  INSTALLER_LIFECYCLE=()
   INSTALLER_RUN_SCRIPT=()
   INSTALLER_OPTION_IDS=()
 }
@@ -47,7 +49,7 @@ load_installer_directory() {
   local run_script="$directory/run.sh"
   local raw key value line_number=0
   local id='' name='' description='' network='' privilege=''
-  local interactive='' architectures='' verification=''
+  local interactive='' architectures='' verification='' lifecycle=''
   local option
   local -a options=()
   local -A seen=() seen_options=()
@@ -90,6 +92,7 @@ load_installer_directory() {
       interactive) interactive="$value" ;;
       architectures) architectures="$value" ;;
       verification) verification="$value" ;;
+      lifecycle) lifecycle="$value" ;;
       option)
         validate_safe_name "$value" \
           || die "$metadata_file:$line_number: invalid installer option '$value'."
@@ -121,6 +124,8 @@ load_installer_directory() {
     || die "Installer '$id' has invalid architecture metadata: $architectures"
   [[ "$verification" =~ ^[a-z0-9][a-z0-9-]*$ ]] \
     || die "Installer '$id' has invalid verification metadata: $verification"
+  [[ "$lifecycle" == 'install-update-uninstall-purge' ]] \
+    || die "Installer '$id' must declare the complete install/update/uninstall/purge lifecycle."
 
   INSTALLER_NAMES+=("$id")
   INSTALLER_DISPLAY_NAME["$id"]="$name"
@@ -130,6 +135,7 @@ load_installer_directory() {
   INSTALLER_INTERACTIVE["$id"]="$interactive"
   INSTALLER_ARCHITECTURES["$id"]="$architectures"
   INSTALLER_VERIFICATION["$id"]="$verification"
+  INSTALLER_LIFECYCLE["$id"]="$lifecycle"
   INSTALLER_RUN_SCRIPT["$id"]="$run_script"
   INSTALLER_OPTION_IDS["$id"]="${options[*]}"
 }

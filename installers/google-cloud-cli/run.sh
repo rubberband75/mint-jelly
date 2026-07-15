@@ -418,7 +418,7 @@ install_packages() {
   local architecture armored_key binary_key source_copy package rc key_size
   local -a unavailable=()
 
-  if check_installation; then
+  if check_installation && [[ "${MINT_JELLY_FORCE_UPDATE:-false}" != 'true' ]]; then
     log "$INSTALLER_NAME and its selected options are already installed; skipping."
     return 0
   else
@@ -489,8 +489,27 @@ install_packages() {
   commit_repository
 }
 
+uninstall_packages() {
+  local package
+  local -a installed=()
+  load_selected_options
+  require_command sudo
+  for package in "${INSTALL_PACKAGES[@]}"; do
+    package_is_installed "$package" && installed+=("$package")
+  done
+  if (( ${#installed[@]} )); then
+    if [[ "${MINT_JELLY_PURGE:-false}" == 'true' ]]; then
+      sudo -- apt-get purge --yes "${installed[@]}"
+    else
+      sudo -- apt-get remove --yes "${installed[@]}"
+    fi
+  fi
+  sudo -- rm -f -- "$SOURCE_FILE" "$KEYRING_PATH"
+  [[ "${MINT_JELLY_PURGE:-false}" != 'true' ]] || rm -rf -- "$HOME/.config/gcloud"
+}
+
 usage() {
-  printf 'Usage: %s {check|install|verify|option-check OPTION}\n' "${0##*/}" >&2
+  printf 'Usage: %s {check|install|update|uninstall|verify|option-check OPTION}\n' "${0##*/}" >&2
 }
 
 main() {
@@ -507,6 +526,14 @@ main() {
     install)
       (($# == 1)) || { usage; return 64; }
       install_packages
+      ;;
+    update)
+      (($# == 1)) || { usage; return 64; }
+      MINT_JELLY_FORCE_UPDATE=true install_packages
+      ;;
+    uninstall)
+      (($# == 1)) || { usage; return 64; }
+      uninstall_packages
       ;;
     verify)
       (($# == 1)) || { usage; return 64; }

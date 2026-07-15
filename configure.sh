@@ -22,11 +22,6 @@ Usage:
   $command_name remote set-default NAME
   $command_name remote test NAME
   $command_name backup-plugins
-  $command_name apt list
-  $command_name apt add PACKAGE...
-  $command_name apt remove PACKAGE...
-  $command_name apt select [--show-all]
-  $command_name installers
 EOF
 }
 
@@ -164,11 +159,22 @@ list_remotes() {
 trap remote_close EXIT
 require_cmd hostname
 
+case "${1-}:${2-}" in
+  init:|remote:add|remote:set-default|backup-plugins:)
+    local_operation_lock_acquire
+    trap 'remote_close; local_operation_lock_release' EXIT
+    ;;
+esac
+
 if [[ ! -f "$MINT_JELLY_CONFIG_FILE" ]]; then
-  case "${1-}" in
-    init|-h|--help|'') ;;
-    *) require_initialized_config ;;
-  esac
+  if [[ "${1-}" == 'remote' && "${2-}" == 'add' ]]; then
+    :
+  else
+    case "${1-}" in
+      init|-h|--help|'') ;;
+      *) require_initialized_config ;;
+    esac
+  fi
 fi
 
 case "${1-}" in
@@ -177,12 +183,14 @@ case "${1-}" in
     [[ ! -e "$MINT_JELLY_CONFIG_FILE" ]] \
       || die "Configuration already exists: $MINT_JELLY_CONFIG_FILE"
     config_initialize_defaults
-    add_remote_wizard true
+    config_write
+    log "Initialized local configuration at $MINT_JELLY_CONFIG_FILE"
     ;;
   remote)
     case "${2-}" in
       add)
         [[ $# -eq 2 ]] || die 'remote add does not accept arguments.'
+        config_initialize_if_missing
         config_read
         add_remote_wizard false
         ;;
@@ -217,16 +225,6 @@ case "${1-}" in
     shift
     MINT_JELLY_COMMAND='mint-jelly config backup-plugins' \
       exec "$SCRIPT_DIR/configure-backup-plugins.sh" "$@"
-    ;;
-  apt)
-    shift
-    MINT_JELLY_COMMAND='mint-jelly config apt' \
-      exec "$SCRIPT_DIR/configure-apt.sh" "$@"
-    ;;
-  installers)
-    shift
-    MINT_JELLY_COMMAND='mint-jelly config installers' \
-      exec "$SCRIPT_DIR/configure-installers.sh" "$@"
     ;;
   -h|--help|'')
     usage

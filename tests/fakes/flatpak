@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+state="${MINT_JELLY_TEST_FLATPAK_STATE:?}"
+command_name="${1-}"
+shift || true
+
+scope='user'
+case "$command_name" in
+  remote-info)
+    [[ "${1-}" != '--user' && "${1-}" != '--system' ]] || { scope="${1#--}"; shift; }
+    [[ "${1-}" == '--show-ref' ]] && shift
+    remote="${1-}"
+    app="${2-}"
+    printf 'app/%s/x86_64/stable\n' "$app"
+    ;;
+  info)
+    [[ "${1-}" != '--user' && "${1-}" != '--system' ]] || { scope="${1#--}"; shift; }
+    [[ "${1-}" == '--show-ref' ]] && shift
+    app="${1-}"
+    while IFS='|' read -r saved_scope remote saved_app branch; do
+      if [[ "$saved_scope" == "$scope" && "$saved_app" == "$app" ]]; then
+        printf 'app/%s/x86_64/%s\n' "$app" "$branch"
+        exit 0
+      fi
+    done < "$state"
+    exit 1
+    ;;
+  install)
+    [[ "${1-}" != '--user' && "${1-}" != '--system' ]] || { scope="${1#--}"; shift; }
+    [[ "${1-}" != '--noninteractive' ]] || shift
+    remote="${1-}"
+    ref="${2-}"
+    app="${ref%%//*}"
+    branch="${ref#*//}"
+    printf '%s|%s|%s|%s\n' "$scope" "$remote" "$app" "$branch" >> "$state"
+    ;;
+  list)
+    while IFS='|' read -r saved_scope remote app branch; do
+      [[ -n "$saved_scope" ]] && printf '%s\t%s\t%s\t%s\n' "$saved_scope" "$remote" "$app" "$branch"
+    done < "$state"
+    ;;
+  complete)
+    printf 'com.example.Test\n'
+    ;;
+  *) exit 64 ;;
+esac

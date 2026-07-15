@@ -477,29 +477,43 @@ remote_rsync() {
   remote_assert_mirror_path "${history_destination%/}" directory
 }
 
-remote_write_recovery_manifest() {
-  local local_manifest="$1"
+remote_manifest_filename() {
+  case "$1" in
+    files) printf 'files.manifest' ;;
+    software) printf 'software.manifest' ;;
+    apt) printf 'apt.manifest' ;;
+    flatpak) printf 'flatpak.manifest' ;;
+    *) die "Unsupported remote manifest kind: $1" ;;
+  esac
+}
+
+remote_write_manifest() {
+  local kind="$1"
+  local local_manifest="$2"
   local metadata_directory="${ACTIVE_HOST_BASE}/.mint-jelly"
-  local manifest="${metadata_directory}/recovery.manifest"
+  local filename manifest
   local temporary byte_count staged_count command
-  local max_bytes="${RECOVERY_MANIFEST_MAX_BYTES:-1048576}"
+  local max_bytes="${3:-1048576}"
   local max_plus_one=$((max_bytes + 1))
   local script
+
+  filename="$(remote_manifest_filename "$kind")"
+  manifest="${metadata_directory}/${filename}"
 
   remote_require_lock exclusive
   remote_assert_mirror_path "$metadata_directory" directory
   [[ -f "$local_manifest" && ! -L "$local_manifest" ]] \
-    || die "Recovery manifest is not a safe regular file: $local_manifest"
+    || die "Manifest is not a safe regular file: $local_manifest"
   require_cmd wc
   byte_count="$(wc -c < "$local_manifest")" \
     || die "Could not measure recovery manifest: $local_manifest"
   byte_count="$(trim "$byte_count")"
   [[ "$byte_count" =~ ^[1-9][0-9]*$ ]] \
     && (( 10#$byte_count <= max_bytes )) \
-    || die "Recovery manifest must contain between 1 and $max_bytes bytes."
+    || die "Manifest must contain between 1 and $max_bytes bytes."
 
   if [[ "$ACTIVE_REMOTE_TYPE" == 'ssh' ]]; then
-    script='set -eu; metadata_directory=$1; manifest=$2; max_bytes=$3; max_plus_one=$4; expected_bytes=$5; umask 077; [ -d "$metadata_directory" ] && [ ! -L "$metadata_directory" ]; [ ! -e "$manifest" ] && [ ! -L "$manifest" ] || { [ -f "$manifest" ] && [ ! -L "$manifest" ]; }; command -v mktemp >/dev/null 2>&1 || { printf "Remote command is unavailable: mktemp\n" >&2; exit 69; }; command -v head >/dev/null 2>&1 || { printf "Remote command is unavailable: head\n" >&2; exit 69; }; command -v wc >/dev/null 2>&1 || { printf "Remote command is unavailable: wc\n" >&2; exit 69; }; temporary=$(mktemp "${metadata_directory}/.recovery.manifest.tmp.XXXXXX"); cleanup() { rm -f -- "$temporary"; }; trap cleanup EXIT HUP INT TERM; head -c "$max_plus_one" > "$temporary"; size=$(wc -c < "$temporary"); [ "$size" -le "$max_bytes" ] || { printf "Recovery manifest exceeds %s bytes\n" "$max_bytes" >&2; exit 65; }; [ "$size" -eq "$expected_bytes" ] || { printf "Recovery manifest transfer was truncated or changed size\n" >&2; exit 74; }; chmod 600 -- "$temporary"; mv -f -- "$temporary" "$manifest"; chmod 600 -- "$manifest"; trap - EXIT HUP INT TERM'
+    script='set -eu; metadata_directory=$1; manifest=$2; max_bytes=$3; max_plus_one=$4; expected_bytes=$5; umask 077; [ -d "$metadata_directory" ] && [ ! -L "$metadata_directory" ]; [ ! -e "$manifest" ] && [ ! -L "$manifest" ] || { [ -f "$manifest" ] && [ ! -L "$manifest" ]; }; command -v mktemp >/dev/null 2>&1 || { printf "Remote command is unavailable: mktemp\n" >&2; exit 69; }; command -v head >/dev/null 2>&1 || { printf "Remote command is unavailable: head\n" >&2; exit 69; }; command -v wc >/dev/null 2>&1 || { printf "Remote command is unavailable: wc\n" >&2; exit 69; }; temporary=$(mktemp "${manifest}.tmp.XXXXXX"); cleanup() { rm -f -- "$temporary"; }; trap cleanup EXIT HUP INT TERM; head -c "$max_plus_one" > "$temporary"; size=$(wc -c < "$temporary"); [ "$size" -le "$max_bytes" ] || { printf "Manifest exceeds %s bytes\n" "$max_bytes" >&2; exit 65; }; [ "$size" -eq "$expected_bytes" ] || { printf "Manifest transfer was truncated or changed size\n" >&2; exit 74; }; chmod 600 -- "$temporary"; mv -f -- "$temporary" "$manifest"; chmod 600 -- "$manifest"; trap - EXIT HUP INT TERM'
     command="$(_remote_build_shell_command \
       "$script" "$metadata_directory" "$manifest" "$max_bytes" "$max_plus_one" "$byte_count")"
     ssh "${SSH_OPTIONS[@]}" "$SSH_TARGET" "$command" < "$local_manifest" \
@@ -539,9 +553,10 @@ remote_write_recovery_manifest() {
   remote_lock_verify
 }
 
-remote_invalidate_recovery_manifest() {
+remote_remove_manifest() {
+  local kind="$1"
   local metadata_directory="${ACTIVE_HOST_BASE}/.mint-jelly"
-  local manifest="${metadata_directory}/recovery.manifest"
+  local manifest="${metadata_directory}/$(remote_manifest_filename "$kind")"
 
   remote_require_lock exclusive
   remote_assert_mirror_path "$metadata_directory" directory
@@ -567,10 +582,11 @@ rm -f -- "$manifest"
   remote_lock_verify
 }
 
-remote_read_recovery_manifest() {
+remote_read_manifest() {
+  local kind="$1"
   local metadata_directory="${ACTIVE_HOST_BASE}/.mint-jelly"
-  local manifest="${metadata_directory}/recovery.manifest"
-  local max_bytes="${RECOVERY_MANIFEST_MAX_BYTES:-1048576}"
+  local manifest="${metadata_directory}/$(remote_manifest_filename "$kind")"
+  local max_bytes="${2:-1048576}"
   local max_plus_one=$((max_bytes + 1))
 
   remote_require_lock shared
@@ -598,6 +614,18 @@ head -c "$max_plus_one" -- "$manifest"
   require_cmd head
   head -c "$max_plus_one" -- "$manifest" || return 1
   remote_lock_verify
+}
+
+remote_write_recovery_manifest() {
+  remote_write_manifest files "$1" "${RECOVERY_MANIFEST_MAX_BYTES:-1048576}"
+}
+
+remote_invalidate_recovery_manifest() {
+  remote_remove_manifest files
+}
+
+remote_read_recovery_manifest() {
+  remote_read_manifest files "${RECOVERY_MANIFEST_MAX_BYTES:-1048576}"
 }
 
 remote_backup_source_exists() {

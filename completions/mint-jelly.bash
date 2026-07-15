@@ -1,76 +1,137 @@
 # Bash completion for Mint Jelly.
 
 _mint_jelly_static_words() {
-  local words="$1"
-
-  mapfile -t COMPREPLY < <(compgen -W "$words" -- "$cur")
+  mapfile -t COMPREPLY < <(compgen -W "$1" -- "$cur")
 }
 
-_mint_jelly_remote_names() {
-  local candidate
-
-  while IFS= read -r candidate; do
-    [[ "$candidate" == "$cur"* ]] && COMPREPLY+=("$candidate")
-  done < <(mint-jelly __complete remotes 2>/dev/null)
-}
-
-_mint_jelly_config_values() {
-  local kind="$1"
-  local candidate
-
+_mint_jelly_dynamic_values() {
+  local kind="$1" candidate
   while IFS= read -r candidate; do
     [[ "$candidate" == "$cur"* ]] && COMPREPLY+=("$candidate")
   done < <(mint-jelly __complete "$kind" 2>/dev/null)
+  return 0
+}
+
+_mint_jelly_remote_names() {
+  _mint_jelly_dynamic_values remotes
+}
+
+_mint_jelly_apt_candidates() {
+  if declare -F _xfunc >/dev/null 2>&1; then
+    COMPREPLY=($(_xfunc apt-cache _apt_cache_packages 2>/dev/null))
+  elif command -v apt-cache >/dev/null 2>&1; then
+    mapfile -t COMPREPLY < <(apt-cache --no-generate pkgnames "$cur" 2>/dev/null)
+  fi
+}
+
+_mint_jelly_flatpak_candidates() {
+  local line='flatpak' quoted index has_scope='false'
+  command -v flatpak >/dev/null 2>&1 || return 0
+  for ((index = 2; index < ${#COMP_WORDS[@]}; index += 1)); do
+    [[ "${COMP_WORDS[index]}" == '--user' || "${COMP_WORDS[index]}" == '--system' ]] \
+      && has_scope='true'
+  done
+  [[ "$has_scope" == 'true' ]] || line+=' --user'
+  for ((index = 2; index < ${#COMP_WORDS[@]}; index += 1)); do
+    printf -v quoted '%q' "${COMP_WORDS[index]}"
+    line+=" $quoted"
+  done
+  mapfile -t COMPREPLY < <(flatpak complete "$line" "${#line}" "$cur" 2>/dev/null)
+}
+
+_mint_jelly_remote_options() {
+  if [[ "$prev" == '--remote' ]]; then
+    _mint_jelly_remote_names
+  elif [[ "$prev" == '--source-host' ]]; then
+    _mint_jelly_static_words "$(hostname 2>/dev/null)"
+  else
+    _mint_jelly_static_words "$1"
+  fi
 }
 
 _mint_jelly() {
-  local cur prev command config_command remote_command
+  local cur prev command action config_command remote_command
 
   COMPREPLY=()
   cur="${COMP_WORDS[COMP_CWORD]}"
   prev=''
   (( COMP_CWORD > 0 )) && prev="${COMP_WORDS[COMP_CWORD - 1]}"
   command="${COMP_WORDS[1]-}"
+  action="${COMP_WORDS[2]-}"
 
   if (( COMP_CWORD == 1 )); then
-    _mint_jelly_static_words 'backup restore software config version uninstall help --help --version'
+    _mint_jelly_static_words 'backup restore software apt flatpak config version uninstall help --help --version'
     return
   fi
 
   case "$command" in
     backup)
-      if [[ "$prev" == '--remote' ]]; then
-        _mint_jelly_remote_names
-      else
-        _mint_jelly_static_words '--remote --dry-run --help'
-      fi
+      _mint_jelly_remote_options '--remote --dry-run --help'
       ;;
     restore)
-      if [[ "$prev" == '--remote' ]]; then
-        _mint_jelly_remote_names
-      elif [[ "$prev" == '--source-host' ]]; then
-        _mint_jelly_static_words "$(hostname 2>/dev/null)"
-      else
-        _mint_jelly_static_words '--remote --source-host --dry-run --yes --allow-platform-mismatch --help'
-      fi
+      _mint_jelly_remote_options '--remote --source-host --dry-run --yes --allow-platform-mismatch --help'
       ;;
     software)
-      if [[ "$prev" == '--remote' ]]; then
-        _mint_jelly_remote_names
-      elif [[ "$prev" == '--source-host' ]]; then
-        _mint_jelly_static_words "$(hostname 2>/dev/null)"
-      elif (( COMP_CWORD == 2 )); then
-        _mint_jelly_static_words 'show install --help'
-      elif [[ "${COMP_WORDS[2]-}" == 'show' ]]; then
-        _mint_jelly_static_words '--remote --source-host --help'
-      else
-        _mint_jelly_static_words '--remote --source-host --apt-only --installers-only --dry-run --yes --allow-platform-mismatch --allow-weak-verification --help'
+      if (( COMP_CWORD == 2 )); then
+        _mint_jelly_static_words 'install list config backup list-remote restore --help'
+      elif [[ "$action" == 'install' ]]; then
+        if [[ "$cur" == --* ]]; then
+          _mint_jelly_static_words '--allow-weak-verification --help'
+        else
+          _mint_jelly_dynamic_values installer-catalog
+        fi
+      elif [[ "$action" == 'backup' ]]; then
+        _mint_jelly_remote_options '--remote --help'
+      elif [[ "$action" == 'list-remote' ]]; then
+        _mint_jelly_remote_options '--remote --source-host --help'
+      elif [[ "$action" == 'restore' ]]; then
+        _mint_jelly_remote_options '--remote --source-host --dry-run --yes --allow-platform-mismatch --allow-weak-verification --help'
+      fi
+      ;;
+    apt)
+      if (( COMP_CWORD == 2 )); then
+        _mint_jelly_static_words 'install add remove list config backup list-remote restore --help'
+      elif [[ "$action" == 'install' || "$action" == 'add' ]]; then
+        if [[ "$cur" == --* ]]; then
+          [[ "$action" == 'install' ]] && _mint_jelly_static_words '--yes --help'
+        else
+          _mint_jelly_apt_candidates
+        fi
+      elif [[ "$action" == 'remove' ]]; then
+        _mint_jelly_dynamic_values apt-packages
+      elif [[ "$action" == 'config' ]]; then
+        _mint_jelly_static_words '--show-all --help'
+      elif [[ "$action" == 'backup' ]]; then
+        _mint_jelly_remote_options '--remote --help'
+      elif [[ "$action" == 'list-remote' ]]; then
+        _mint_jelly_remote_options '--remote --source-host --help'
+      elif [[ "$action" == 'restore' ]]; then
+        _mint_jelly_remote_options '--remote --source-host --dry-run --yes --allow-platform-mismatch --help'
+      fi
+      ;;
+    flatpak)
+      if (( COMP_CWORD == 2 )); then
+        _mint_jelly_static_words 'install add remove list config backup list-remote restore --help'
+      elif [[ "$action" == 'install' || "$action" == 'add' ]]; then
+        if [[ "$cur" == --* ]]; then
+          _mint_jelly_static_words '--user --system --yes --help'
+        else
+          _mint_jelly_flatpak_candidates
+        fi
+      elif [[ "$action" == 'remove' ]]; then
+        _mint_jelly_dynamic_values flatpaks
+      elif [[ "$action" == 'backup' ]]; then
+        _mint_jelly_remote_options '--remote --help'
+      elif [[ "$action" == 'list-remote' ]]; then
+        _mint_jelly_remote_options '--remote --source-host --help'
+      elif [[ "$action" == 'restore' ]]; then
+        _mint_jelly_remote_options '--remote --source-host --dry-run --yes --allow-platform-mismatch --help'
       fi
       ;;
     config)
       config_command="${COMP_WORDS[2]-}"
       if (( COMP_CWORD == 2 )); then
-        _mint_jelly_static_words 'init remote backup-plugins apt installers --help'
+        _mint_jelly_static_words 'init remote backup-plugins --help'
       elif [[ "$config_command" == 'remote' ]]; then
         remote_command="${COMP_WORDS[3]-}"
         if (( COMP_CWORD == 3 )); then
@@ -78,14 +139,6 @@ _mint_jelly() {
         elif (( COMP_CWORD == 4 )) \
           && [[ "$remote_command" == 'set-default' || "$remote_command" == 'test' ]]; then
           _mint_jelly_remote_names
-        fi
-      elif [[ "$config_command" == 'apt' ]]; then
-        if (( COMP_CWORD == 3 )); then
-          _mint_jelly_static_words 'list add remove select --help'
-        elif [[ "${COMP_WORDS[3]-}" == 'remove' ]]; then
-          _mint_jelly_config_values apt-packages
-        elif [[ "${COMP_WORDS[3]-}" == 'select' ]]; then
-          _mint_jelly_static_words '--show-all --help'
         fi
       fi
       ;;

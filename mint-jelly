@@ -29,16 +29,16 @@ Mint Jelly — A tool to preserve your Linux Mint setup
 Usage:
   mint-jelly backup [--remote NAME] [--dry-run]
   mint-jelly restore [--remote NAME] [--source-host HOSTNAME] [--dry-run] [--yes] [--allow-platform-mismatch]
-  mint-jelly software show [--remote NAME] [--source-host HOSTNAME]
-  mint-jelly software install [--remote NAME] [--source-host HOSTNAME] [OPTIONS]
+  mint-jelly software install INSTALLER...
+  mint-jelly software list|config|backup|list-remote|restore
+  mint-jelly apt install|add|remove|list|config|backup|list-remote|restore
+  mint-jelly flatpak install|add|remove|list|config|backup|list-remote|restore
   mint-jelly config init
   mint-jelly config remote add
   mint-jelly config remote list
   mint-jelly config remote set-default NAME
   mint-jelly config remote test NAME
   mint-jelly config backup-plugins
-  mint-jelly config apt list|add|remove|select [--show-all]
-  mint-jelly config installers
   mint-jelly version
   mint-jelly uninstall [--purge] [--yes]
 
@@ -49,7 +49,7 @@ EOF
 complete_remote_names() {
   local config_file
 
-  config_file="${MINT_JELLY_CONFIG_FILE:-${MINT_JELLY_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/mint-jelly}/backup.conf}"
+  config_file="${MINT_JELLY_CONFIG_FILE:-${MINT_JELLY_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/mint-jelly}/config.ini}"
   [[ -r "$config_file" ]] || return 0
 
   # Completion is deliberately local and side-effect free. The full parser
@@ -62,7 +62,7 @@ complete_config_values() {
   local key="$1"
   local config_file
 
-  config_file="${MINT_JELLY_CONFIG_FILE:-${MINT_JELLY_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/mint-jelly}/backup.conf}"
+  config_file="${MINT_JELLY_CONFIG_FILE:-${MINT_JELLY_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/mint-jelly}/config.ini}"
   [[ -r "$config_file" ]] || return 0
   case "$key" in
     apt_package)
@@ -71,7 +71,21 @@ complete_config_values() {
     installer)
       sed -nE 's/^installer=([A-Za-z0-9][A-Za-z0-9._-]*)$/\1/p' "$config_file"
       ;;
+    flatpak)
+      sed -nE 's/^flatpak_app=(user|system)\|[A-Za-z0-9._-]+\|([A-Za-z0-9._-]+)\|[A-Za-z0-9._-]+$/\2/p' "$config_file"
+      ;;
   esac
+}
+
+complete_available_installers() {
+  local directory
+  shopt -s nullglob
+  for directory in "$APP_ROOT/installers/"*; do
+    [[ -d "$directory" && -f "$directory/installer.conf" \
+      && -x "$directory/run.sh" ]] || continue
+    printf '%s\n' "${directory##*/}"
+  done
+  shopt -u nullglob
 }
 
 APP_ROOT="$(resolve_application_root)"
@@ -93,7 +107,15 @@ case "${1-}" in
     ;;
   software)
     shift
-    MINT_JELLY_COMMAND='mint-jelly software' exec "$APP_ROOT/software.sh" "$@"
+    MINT_JELLY_COMMAND='mint-jelly software' exec "$APP_ROOT/commands/software.sh" "$@"
+    ;;
+  apt)
+    shift
+    MINT_JELLY_COMMAND='mint-jelly apt' exec "$APP_ROOT/commands/apt.sh" "$@"
+    ;;
+  flatpak)
+    shift
+    MINT_JELLY_COMMAND='mint-jelly flatpak' exec "$APP_ROOT/commands/flatpak.sh" "$@"
     ;;
   config)
     shift
@@ -115,6 +137,8 @@ case "${1-}" in
       remotes) complete_remote_names ;;
       apt-packages) complete_config_values apt_package ;;
       installers) complete_config_values installer ;;
+      flatpaks) complete_config_values flatpak ;;
+      installer-catalog) complete_available_installers ;;
     esac
     ;;
   help|-h|--help|'')

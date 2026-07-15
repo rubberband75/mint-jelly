@@ -7,7 +7,9 @@ README.md
 mint-jelly
 backup.sh
 restore.sh
-software.sh
+commands/software.sh
+commands/apt.sh
+commands/flatpak.sh
 configure.sh
 configure-backup-plugins.sh
 configure-installers.sh
@@ -21,6 +23,7 @@ lib/checklist.sh
 lib/installers.sh
 lib/recovery.sh
 lib/remote.sh
+lib/plans.sh
 backup-plugins/firefox.sh
 backup-plugins/cinnamon-desktop.sh
 installers/datagrip/installer.conf

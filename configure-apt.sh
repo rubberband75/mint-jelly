@@ -19,7 +19,7 @@ APT_INSTALLED_PACKAGE_NAMES=()
 declare -A APT_INITIAL_PACKAGE=()
 
 usage() {
-  local command_name="${MINT_JELLY_COMMAND:-mint-jelly config apt}"
+  local command_name="${MINT_JELLY_COMMAND:-mint-jelly apt}"
 
   cat <<EOF
 Usage:

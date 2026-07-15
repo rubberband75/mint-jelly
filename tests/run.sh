@@ -53,6 +53,22 @@ assert_recovery_rejected() {
   fi
 }
 
+assert_plan_rejected() {
+  local label="$1"
+  local manifest="$2"
+
+  if bash -euo pipefail -c '
+    SCRIPT_DIR="$1"
+    source "$1/lib/common.sh"
+    source "$1/lib/config.sh"
+    source "$1/lib/recovery.sh"
+    source "$1/lib/plans.sh"
+    plan_read "$2"
+  ' _ "$TEST_DATA/mint-jelly/current" "$manifest" >/dev/null 2>&1; then
+    fail "Plan parser accepted $label."
+  fi
+}
+
 run_installer() {
   env \
     HOME="$TEST_HOME" \
@@ -66,7 +82,7 @@ run_installer() {
 mkdir -p -- "$TEST_HOME" "$TEST_CONFIG/mint-jelly" "$TEST_STATE/mint-jelly"
 install -m 0600 -- \
   "$PROJECT_ROOT/tests/fixtures/backup.conf" \
-  "$TEST_CONFIG/mint-jelly/backup.conf"
+  "$TEST_CONFIG/mint-jelly/config.ini"
 
 bash "$PROJECT_ROOT/tests/datagrip-installer.sh" >/dev/null
 bash "$PROJECT_ROOT/tests/google-cloud-cli-installer.sh" >/dev/null
@@ -98,7 +114,7 @@ fi
   || fail "Explicit missing source failed unclearly: $invalid_source_error"
 
 # Installed command modes are properties of their runtime roles, not of the
-# checkout or release archive. This is the regression case for software.sh
+# checkout or release archive. This is the regression case for command scripts
 # arriving without an executable bit and then failing through the launcher.
 MODE_SOURCE="$TEST_ROOT/mode-source"
 MODE_HOME="$TEST_ROOT/mode-home"
@@ -118,7 +134,7 @@ env \
 while IFS= read -r runtime_path || [[ -n "$runtime_path" ]]; do
   [[ -z "$runtime_path" || "$runtime_path" == \#* ]] && continue
   case "$runtime_path" in
-    mint-jelly|backup.sh|restore.sh|software.sh|configure.sh|configure-backup-plugins.sh|configure-installers.sh|configure-apt.sh|uninstall.sh|installers/*/run.sh)
+    mint-jelly|backup.sh|restore.sh|configure.sh|configure-backup-plugins.sh|configure-installers.sh|configure-apt.sh|uninstall.sh|commands/*.sh|installers/*/run.sh)
       [[ -x "$MODE_DATA/mint-jelly/current/$runtime_path" ]] \
         || fail "Installer did not make runtime command executable: $runtime_path"
       ;;
@@ -248,7 +264,18 @@ version_output="$(
 )"
 [[ "$version_output" == 'mint-jelly 0.0.2' ]] \
   || fail "Unexpected version output: $version_output"
-[[ -x "$TEST_DATA/mint-jelly/current/software.sh" ]] \
+
+INIT_ONLY_ROOT="$TEST_ROOT/init-only"
+HOME="$TEST_HOME" \
+MINT_JELLY_CONFIG_DIR="$INIT_ONLY_ROOT" \
+MINT_JELLY_CONFIG_FILE="$INIT_ONLY_ROOT/config.ini" \
+  "$LAUNCHER" config init >/dev/null
+grep -qx 'version=1' "$INIT_ONLY_ROOT/config.ini" \
+  || fail 'config init did not preserve configuration version 1.'
+if grep -q '^\[remote ' "$INIT_ONLY_ROOT/config.ini"; then
+  fail 'config init still requires or creates a remote.'
+fi
+[[ -x "$TEST_DATA/mint-jelly/current/commands/software.sh" ]] \
   || fail 'Installed software command is not executable.'
 
 (
@@ -309,11 +336,11 @@ export XDG_CONFIG_HOME="$TEST_CONFIG"
 export XDG_STATE_HOME="$TEST_STATE"
 export PATH="$TEST_BIN:/usr/bin:/bin"
 
-"$LAUNCHER" config apt add git >/dev/null
-grep -qx 'apt_package=git' "$TEST_CONFIG/mint-jelly/backup.conf" \
+"$LAUNCHER" apt add git >/dev/null
+grep -qx 'apt_package=git' "$TEST_CONFIG/mint-jelly/config.ini" \
   || fail 'APT add did not update the configuration.'
-"$LAUNCHER" config apt remove git >/dev/null
-if grep -q '^apt_package=git$' "$TEST_CONFIG/mint-jelly/backup.conf"; then
+"$LAUNCHER" apt remove git >/dev/null
+if grep -q '^apt_package=git$' "$TEST_CONFIG/mint-jelly/config.ini"; then
   fail 'APT remove did not update the configuration.'
 fi
 
@@ -351,13 +378,37 @@ COMP_CWORD=3
 _mint_jelly
 assert_contains --allow-weak-verification "${COMPREPLY[@]}"
 
-COMP_WORDS=(mint-jelly config apt s)
+COMP_WORDS=(mint-jelly software install post)
 COMP_CWORD=3
 _mint_jelly
-assert_contains select "${COMPREPLY[@]}"
+assert_contains postman "${COMPREPLY[@]}"
 
-COMP_WORDS=(mint-jelly config apt select --s)
+saved_path="$PATH"
+PATH="$PROJECT_ROOT/tests/fakes:$PATH"
+COMP_WORDS=(mint-jelly apt install ink)
+COMP_CWORD=3
+_mint_jelly
+PATH="$saved_path"
+assert_contains inkscape "${COMPREPLY[@]}"
+
+COMPLETION_FLATPAK_STATE="$TEST_ROOT/completion-flatpak.state"
+: > "$COMPLETION_FLATPAK_STATE"
+export MINT_JELLY_TEST_FLATPAK_STATE="$COMPLETION_FLATPAK_STATE"
+PATH="$PROJECT_ROOT/tests/fakes:$PATH"
+COMP_WORDS=(mint-jelly flatpak install flathub com.e)
 COMP_CWORD=4
+_mint_jelly
+PATH="$saved_path"
+unset MINT_JELLY_TEST_FLATPAK_STATE
+assert_contains com.example.Test "${COMPREPLY[@]}"
+
+COMP_WORDS=(mint-jelly apt c)
+COMP_CWORD=2
+_mint_jelly
+assert_contains config "${COMPREPLY[@]}"
+
+COMP_WORDS=(mint-jelly apt config --s)
+COMP_CWORD=3
 _mint_jelly
 assert_contains --show-all "${COMPREPLY[@]}"
 
@@ -531,10 +582,10 @@ mkdir -p -- "$TEST_REMOTE/SSH-TRANSPORT" "$TEST_ROOT/ssh-transport"
     "$TEST_ROOT/ssh-transport/read-back"
   remote_lock_release
 ) || fail 'Simulated SSH lock or streamed manifest commit failed.'
-[[ "$(stat -c '%a' "$TEST_REMOTE/SSH-TRANSPORT/.mint-jelly/recovery.manifest")" == '600' ]] \
+[[ "$(stat -c '%a' "$TEST_REMOTE/SSH-TRANSPORT/.mint-jelly/files.manifest")" == '600' ]] \
   || fail 'SSH-streamed recovery manifest does not have mode 0600.'
 if find "$TEST_REMOTE/SSH-TRANSPORT/.mint-jelly" -maxdepth 1 \
-  -name '.recovery.manifest.tmp.*' -print -quit | grep -q .; then
+  -name 'files.manifest.tmp.*' -print -quit | grep -q .; then
   fail 'SSH-streamed recovery manifest left a staging file behind.'
 fi
 
@@ -620,16 +671,56 @@ install -m 0600 -- "$PROJECT_ROOT/tests/fixtures/backup.conf" "$TEST_HOME/.ssh/t
 
 "$LAUNCHER" backup --remote alpha >/dev/null
 BACKED_HOST="$(hostname)"
-BACKED_MANIFEST="$TEST_REMOTE/$BACKED_HOST/.mint-jelly/recovery.manifest"
+BACKED_MANIFEST="$TEST_REMOTE/$BACKED_HOST/.mint-jelly/files.manifest"
 assert_file "$BACKED_MANIFEST"
-grep -qx 'apt_package=git' "$BACKED_MANIFEST" \
-  || fail 'Backup recovery manifest did not snapshot the configured APT package.'
-grep -qx 'installer=postman' "$BACKED_MANIFEST" \
-  || fail 'Backup recovery manifest did not snapshot the configured installer.'
-grep -qx 'installer=google-cloud-cli' "$BACKED_MANIFEST" \
-  || fail 'Backup recovery manifest did not snapshot the configurable installer.'
-grep -qx 'installer_option=google-cloud-cli:kubectl' "$BACKED_MANIFEST" \
-  || fail 'Backup recovery manifest did not snapshot the installer option.'
+if grep -qE '^(apt_package|installer|installer_option)=' "$BACKED_MANIFEST"; then
+  fail 'File backup manifest still contains software-domain state.'
+fi
+MINT_JELLY_OS_RELEASE_FILE="$PROJECT_ROOT/tests/fixtures/os-release" \
+  "$LAUNCHER" apt backup --remote alpha >/dev/null
+MINT_JELLY_OS_RELEASE_FILE="$PROJECT_ROOT/tests/fixtures/os-release" \
+  "$LAUNCHER" software backup --remote alpha >/dev/null
+APT_MANIFEST="$TEST_REMOTE/$BACKED_HOST/.mint-jelly/apt.manifest"
+SOFTWARE_MANIFEST="$TEST_REMOTE/$BACKED_HOST/.mint-jelly/software.manifest"
+assert_file "$APT_MANIFEST"
+assert_file "$SOFTWARE_MANIFEST"
+grep -qx 'entry=git' "$APT_MANIFEST" \
+  || fail 'APT backup did not snapshot the configured package.'
+(
+  SCRIPT_DIR="$TEST_DATA/mint-jelly/current"
+  source "$SCRIPT_DIR/lib/common.sh"
+  source "$SCRIPT_DIR/lib/config.sh"
+  config_read
+  APT_PACKAGES=()
+  config_write
+)
+MINT_JELLY_OS_RELEASE_FILE="$PROJECT_ROOT/tests/fixtures/os-release" \
+  "$LAUNCHER" apt backup --remote alpha >/dev/null
+if grep -q '^entry=' "$APT_MANIFEST"; then
+  fail 'An empty APT backup did not clear the remote desired-state list.'
+fi
+(
+  SCRIPT_DIR="$TEST_DATA/mint-jelly/current"
+  source "$SCRIPT_DIR/lib/common.sh"
+  source "$SCRIPT_DIR/lib/config.sh"
+  config_read
+  APT_PACKAGES=(git)
+  config_write
+)
+MINT_JELLY_OS_RELEASE_FILE="$PROJECT_ROOT/tests/fixtures/os-release" \
+  "$LAUNCHER" apt backup --remote alpha >/dev/null
+grep -qx 'entry=postman' "$SOFTWARE_MANIFEST" \
+  || fail 'Software backup did not snapshot the configured installer.'
+grep -qx 'entry=google-cloud-cli' "$SOFTWARE_MANIFEST" \
+  || fail 'Software backup did not snapshot the configurable installer.'
+grep -qx 'option=google-cloud-cli:kubectl' "$SOFTWARE_MANIFEST" \
+  || fail 'Software backup did not snapshot the installer option.'
+cp -- "$SOFTWARE_MANIFEST" "$TEST_ROOT/software-plan-unknown"
+printf 'unknown=value\n' >> "$TEST_ROOT/software-plan-unknown"
+assert_plan_rejected 'an unknown scoped-manifest key' "$TEST_ROOT/software-plan-unknown"
+cp -- "$APT_MANIFEST" "$TEST_ROOT/apt-plan-duplicate"
+printf 'entry=git\n' >> "$TEST_ROOT/apt-plan-duplicate"
+assert_plan_rejected 'a duplicate scoped-manifest entry' "$TEST_ROOT/apt-plan-duplicate"
 "$LAUNCHER" restore --remote alpha --source-host "$BACKED_HOST" --dry-run >/dev/null
 
 cp -- "$BACKED_MANIFEST" "$BACKED_MANIFEST.platform-match"
@@ -662,102 +753,120 @@ mv -f -- "$BACKED_MANIFEST.platform-match" "$BACKED_MANIFEST"
   || fail 'A top-level symbolic-link source did not retain its absolute path.'
 assert_not_exists "$TEST_REMOTE/$BACKED_HOST/bin/bin"
 
-mkdir -p -- "$TEST_REMOTE/TESTHOST/.mint-jelly"
-install -m 0600 -- \
-  "$PROJECT_ROOT/tests/fixtures/recovery.manifest" \
-  "$TEST_REMOTE/TESTHOST/.mint-jelly/recovery.manifest"
+# Local desired-state commands work without any configured remote. Successful
+# installations are tracked; failed installations leave their category absent.
+LOCAL_ONLY_ROOT="$TEST_ROOT/local-only"
+LOCAL_ONLY_CONFIG="$LOCAL_ONLY_ROOT/config.ini"
+LOCAL_ONLY_MARKER="$LOCAL_ONLY_ROOT/test-app.installed"
+mkdir -p -- "$LOCAL_ONLY_ROOT"
+MINT_JELLY_CONFIG_DIR="$LOCAL_ONLY_ROOT" \
+MINT_JELLY_CONFIG_FILE="$LOCAL_ONLY_CONFIG" \
+MINT_JELLY_INSTALLERS_DIR="$PROJECT_ROOT/tests/fakes/installers" \
+MINT_JELLY_TEST_INSTALL_MARKER="$LOCAL_ONLY_MARKER" \
+  "$LAUNCHER" software install test-app >/dev/null
+grep -qx 'version=1' "$LOCAL_ONLY_CONFIG" \
+  || fail 'Lazy local initialization did not retain config version 1.'
+grep -qx 'installer=test-app' "$LOCAL_ONLY_CONFIG" \
+  || fail 'Successful direct installer execution was not tracked.'
+if grep -q '^\[remote ' "$LOCAL_ONLY_CONFIG"; then
+  fail 'A local software installation created a remote configuration.'
+fi
+if remote_required_error="$(
+  MINT_JELLY_CONFIG_DIR="$LOCAL_ONLY_ROOT" \
+  MINT_JELLY_CONFIG_FILE="$LOCAL_ONLY_CONFIG" \
+  MINT_JELLY_INSTALLERS_DIR="$PROJECT_ROOT/tests/fakes/installers" \
+  MINT_JELLY_OS_RELEASE_FILE="$PROJECT_ROOT/tests/fixtures/os-release" \
+    "$LAUNCHER" software backup 2>&1
+)"; then
+  fail 'A scoped backup succeeded without a configured remote.'
+fi
+[[ "$remote_required_error" == *'No default remote is configured'* ]] \
+  || fail "Scoped backup failed unclearly without a remote: $remote_required_error"
 
-exec {held_remote_lock}>> "$TEST_REMOTE/TESTHOST/.mint-jelly/operation.lock"
+FAILED_CONFIG="$TEST_ROOT/failed-local/config.ini"
+mkdir -p -- "${FAILED_CONFIG%/*}"
+if MINT_JELLY_CONFIG_DIR="${FAILED_CONFIG%/*}" \
+  MINT_JELLY_CONFIG_FILE="$FAILED_CONFIG" \
+  MINT_JELLY_INSTALLERS_DIR="$PROJECT_ROOT/tests/fakes/installers" \
+  MINT_JELLY_TEST_INSTALL_MARKER="$TEST_ROOT/failed-local/marker" \
+  MINT_JELLY_TEST_VERIFY_FAIL=true \
+    "$LAUNCHER" software install test-app >/dev/null 2>&1; then
+  fail 'A bundled installer with failed verification reported success.'
+fi
+if grep -q '^installer=test-app$' "$FAILED_CONFIG"; then
+  fail 'An installer with failed verification was added to local configuration.'
+fi
+
+TEST_APT_LOG="$TEST_ROOT/apt.log"
+MINT_JELLY_CONFIG_DIR="$LOCAL_ONLY_ROOT" \
+MINT_JELLY_CONFIG_FILE="$LOCAL_ONLY_CONFIG" \
+MINT_JELLY_TEST_LOG="$TEST_APT_LOG" \
+MINT_JELLY_TEST_DPKG_INSTALLED=inkscape \
+PATH="$PROJECT_ROOT/tests/fakes:$TEST_BIN:/usr/bin:/bin" \
+  "$LAUNCHER" apt install inkscape --yes >/dev/null
+grep -qx 'apt-get install --yes inkscape' "$TEST_APT_LOG" \
+  || fail 'Direct APT installation did not use the expected transaction.'
+grep -qx 'apt_package=inkscape' "$LOCAL_ONLY_CONFIG" \
+  || fail 'Successful direct APT installation was not tracked.'
+
+FLATPAK_STATE="$TEST_ROOT/flatpak.state"
+: > "$FLATPAK_STATE"
+MINT_JELLY_CONFIG_DIR="$LOCAL_ONLY_ROOT" \
+MINT_JELLY_CONFIG_FILE="$LOCAL_ONLY_CONFIG" \
+MINT_JELLY_TEST_FLATPAK_STATE="$FLATPAK_STATE" \
+PATH="$PROJECT_ROOT/tests/fakes:$TEST_BIN:/usr/bin:/bin" \
+  "$LAUNCHER" flatpak install flathub com.example.Test --yes >/dev/null
+grep -qx 'flatpak_app=user|flathub|com.example.Test|stable' "$LOCAL_ONLY_CONFIG" \
+  || fail 'Successful Flatpak installation was not tracked canonically.'
+
+# Scoped remote reads honor the shared lock and reject oversized manifests.
+exec {held_remote_lock}>> "$TEST_REMOTE/$BACKED_HOST/.mint-jelly/operation.lock"
 flock -x "$held_remote_lock"
 if lock_error="$(
   MINT_JELLY_REMOTE_LOCK_TIMEOUT=1 \
   MINT_JELLY_OS_RELEASE_FILE="$PROJECT_ROOT/tests/fixtures/os-release" \
-    "$LAUNCHER" software show --remote alpha --source-host TESTHOST 2>&1
+    "$LAUNCHER" software list-remote --remote alpha --source-host "$BACKED_HOST" 2>&1
 )"; then
-  fail 'Software read ignored an exclusive remote lock.'
+  fail 'Software list-remote ignored an exclusive remote lock.'
 fi
 flock -u "$held_remote_lock"
 exec {held_remote_lock}>&-
 [[ "$lock_error" == *'Timed out waiting for the shared remote lock after 1 seconds.'* ]] \
   || fail "Remote lock contention did not fail clearly: $lock_error"
 
-software_show="$(
+software_remote="$(
   MINT_JELLY_OS_RELEASE_FILE="$PROJECT_ROOT/tests/fixtures/os-release" \
-    "$LAUNCHER" software show --remote alpha --source-host TESTHOST
+    "$LAUNCHER" software list-remote --remote alpha --source-host "$BACKED_HOST"
 )"
-[[ "$software_show" == *'mint-jelly-test-package'* ]] \
-  || fail 'Software show did not read the saved APT package.'
-[[ "$software_show" == *'postman'* ]] \
-  || fail 'Software show did not read the saved installer ID.'
-[[ "$software_show" == *'HTTPS and archive validation; no published checksum'* ]] \
-  || fail 'Software show did not disclose the installer verification level.'
+[[ "$software_remote" == *'postman'* && "$software_remote" == *'google-cloud-cli'* ]] \
+  || fail 'Software list-remote did not read the scoped manifest.'
 
-# A non-interactive run may not silently accept a vendor artifact that has no
-# published checksum. Report Discord as absent through the fake dpkg-query and
-# prove the guard stops before sudo, download, or installer execution.
-cp -- "$TEST_REMOTE/TESTHOST/.mint-jelly/recovery.manifest" \
-  "$TEST_ROOT/recovery.manifest.before-weak-check"
-sed -i 's/^installer=.*/installer=discord/' \
-  "$TEST_REMOTE/TESTHOST/.mint-jelly/recovery.manifest"
-if weak_verification_error="$(
-  MINT_JELLY_OS_RELEASE_FILE="$PROJECT_ROOT/tests/fixtures/os-release" \
-  PATH="$PROJECT_ROOT/tests/fakes:$TEST_BIN:/usr/bin:/bin" \
-    "$LAUNCHER" software install --remote alpha --source-host TESTHOST \
-      --installers-only --yes 2>&1
-)"; then
-  fail 'Unattended software install accepted a limited-verification artifact without explicit consent.'
-fi
-[[ "$weak_verification_error" == *'requires --allow-weak-verification: discord'* ]] \
-  || fail "Limited-verification refusal failed unclearly: $weak_verification_error"
-mv -f -- "$TEST_ROOT/recovery.manifest.before-weak-check" \
-  "$TEST_REMOTE/TESTHOST/.mint-jelly/recovery.manifest"
-
-if "$LAUNCHER" software install --allow-weak-verification \
+cp -- "$SOFTWARE_MANIFEST" "$TEST_ROOT/software.manifest.valid"
+truncate -s 2097152 "$SOFTWARE_MANIFEST"
+if "$LAUNCHER" software list-remote --remote alpha --source-host "$BACKED_HOST" \
   >/dev/null 2>&1; then
-  fail '--allow-weak-verification was accepted without --yes.'
+  fail 'Software list-remote accepted an oversized scoped manifest.'
 fi
-if "$LAUNCHER" software install --apt-only --yes --allow-weak-verification \
-  >/dev/null 2>&1; then
-  fail '--allow-weak-verification was accepted for an APT-only run.'
-fi
+mv -f -- "$TEST_ROOT/software.manifest.valid" "$SOFTWARE_MANIFEST"
 
-cp -- "$TEST_REMOTE/TESTHOST/.mint-jelly/recovery.manifest" \
-  "$TEST_ROOT/recovery.manifest.valid"
-truncate -s 2097152 "$TEST_REMOTE/TESTHOST/.mint-jelly/recovery.manifest"
-if "$LAUNCHER" software show --remote alpha --source-host TESTHOST \
-  >/dev/null 2>&1; then
-  fail 'Software read accepted an oversized remote recovery manifest.'
-fi
-mv -f -- "$TEST_ROOT/recovery.manifest.valid" \
-  "$TEST_REMOTE/TESTHOST/.mint-jelly/recovery.manifest"
+MINT_JELLY_OS_RELEASE_FILE="$PROJECT_ROOT/tests/fixtures/os-release" \
+  "$LAUNCHER" software restore --remote alpha --source-host "$BACKED_HOST" \
+    --dry-run >/dev/null
+MINT_JELLY_OS_RELEASE_FILE="$PROJECT_ROOT/tests/fixtures/os-release" \
+  "$LAUNCHER" apt restore --remote alpha --source-host "$BACKED_HOST" \
+    --dry-run >/dev/null
 
-if query_error="$(
-  MINT_JELLY_TEST_DPKG_QUERY_ERROR=true \
-  MINT_JELLY_OS_RELEASE_FILE="$PROJECT_ROOT/tests/fixtures/os-release" \
-  PATH="$PROJECT_ROOT/tests/fakes:$TEST_BIN:/usr/bin:/bin" \
-    "$LAUNCHER" software show --remote alpha --source-host TESTHOST 2>&1
-)"; then
-  fail 'Software show treated a dpkg-query database error as a missing package.'
-fi
-[[ "$query_error" == *"dpkg-query failed for 'mint-jelly-test-package' with status 2"* ]] \
-  || fail "Software show hid the dpkg-query failure: $query_error"
-
-TEST_APT_LOG="$TEST_ROOT/apt.log"
-export MINT_JELLY_TEST_LOG="$TEST_APT_LOG"
+MINT_JELLY_TEST_FLATPAK_STATE="$FLATPAK_STATE" \
 MINT_JELLY_OS_RELEASE_FILE="$PROJECT_ROOT/tests/fixtures/os-release" \
 PATH="$PROJECT_ROOT/tests/fakes:$TEST_BIN:/usr/bin:/bin" \
-  "$LAUNCHER" software install --remote alpha --source-host TESTHOST \
-    --apt-only --yes >/dev/null
-grep -qx 'apt-get -o Dpkg::Use-Pty=0 update' "$TEST_APT_LOG" \
-  || fail 'Software install did not refresh APT indexes.'
-grep -qx 'apt-get -o Dpkg::Use-Pty=0 -o Dpkg::Options::=--force-confold install --yes mint-jelly-test-package' "$TEST_APT_LOG" \
-  || fail 'Software install did not use the expected APT package transaction.'
+  "$LAUNCHER" flatpak backup --remote alpha >/dev/null
+assert_file "$TEST_REMOTE/$BACKED_HOST/.mint-jelly/flatpak.manifest"
 
 "$LAUNCHER" uninstall --yes >/dev/null
 assert_not_exists "$TEST_DATA/mint-jelly"
 assert_not_exists "$LAUNCHER"
 assert_not_exists "$COMPLETION"
-assert_file "$TEST_CONFIG/mint-jelly/backup.conf"
+assert_file "$TEST_CONFIG/mint-jelly/config.ini"
 [[ -d "$TEST_STATE/mint-jelly" ]] || fail 'State directory should survive a normal uninstall.'
 
 run_installer

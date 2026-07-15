@@ -3,8 +3,9 @@
 # Shared runtime helpers. Entry-point scripts enable strict mode.
 
 MINT_JELLY_CONFIG_DIR="${MINT_JELLY_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/mint-jelly}"
-MINT_JELLY_CONFIG_FILE="${MINT_JELLY_CONFIG_FILE:-${MINT_JELLY_CONFIG_DIR}/backup.conf}"
+MINT_JELLY_CONFIG_FILE="${MINT_JELLY_CONFIG_FILE:-${MINT_JELLY_CONFIG_DIR}/config.ini}"
 MINT_JELLY_STATE_DIR="${MINT_JELLY_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/mint-jelly}"
+MINT_JELLY_OPERATION_LOCK_FD=''
 
 log() {
   printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
@@ -73,5 +74,24 @@ require_initialized_config() {
   if [[ ! -f "$MINT_JELLY_CONFIG_FILE" ]]; then
     printf 'First run:\n  mint-jelly config init\n' >&2
     exit 1
+  fi
+}
+
+local_operation_lock_acquire() {
+  ensure_config_dir
+  if [[ -n "$MINT_JELLY_OPERATION_LOCK_FD" ]]; then
+    return 0
+  fi
+  require_cmd flock
+  exec {MINT_JELLY_OPERATION_LOCK_FD}>"$MINT_JELLY_CONFIG_DIR/operation.lock"
+  flock -n "$MINT_JELLY_OPERATION_LOCK_FD" \
+    || die 'Another Mint Jelly operation is already running.'
+}
+
+local_operation_lock_release() {
+  if [[ -n "$MINT_JELLY_OPERATION_LOCK_FD" ]]; then
+    flock -u "$MINT_JELLY_OPERATION_LOCK_FD" || true
+    eval "exec ${MINT_JELLY_OPERATION_LOCK_FD}>&-"
+    MINT_JELLY_OPERATION_LOCK_FD=''
   fi
 }

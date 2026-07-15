@@ -13,8 +13,6 @@ source "$SCRIPT_DIR/lib/config.sh"
 source "$SCRIPT_DIR/lib/remote.sh"
 # shellcheck source=lib/backup-plugins.sh
 source "$SCRIPT_DIR/lib/backup-plugins.sh"
-# shellcheck source=lib/installers.sh
-source "$SCRIPT_DIR/lib/installers.sh"
 # shellcheck source=lib/recovery.sh
 source "$SCRIPT_DIR/lib/recovery.sh"
 
@@ -136,11 +134,8 @@ require_cmd hostname
 require_cmd realpath
 require_initialized_config
 load_backup_plugins
-load_installers
 
 config_read
-require_configured_installers_available
-require_configured_installer_options_available
 if [[ -z "$SELECTED_REMOTE" ]]; then
   [[ -n "$DEFAULT_REMOTE" ]] \
     || die 'No default remote is configured. Run: mint-jelly config remote add'
@@ -212,9 +207,6 @@ recovery_reset
 recovery_populate_platform "$MACHINE_NAME"
 RECOVERY_SOURCES=("${MANIFEST_SOURCES[@]}")
 RECOVERY_BACKUP_PLUGINS=("${BACKUP_PLUGINS[@]}")
-RECOVERY_APT_PACKAGES=("${APT_PACKAGES[@]}")
-RECOVERY_INSTALLERS=("${INSTALLERS[@]}")
-RECOVERY_INSTALLER_OPTIONS=("${INSTALLER_OPTION_SELECTIONS[@]}")
 recovery_write_file "$RECOVERY_TEMP"
 
 if [[ "$DRY_RUN" == 'false' ]]; then

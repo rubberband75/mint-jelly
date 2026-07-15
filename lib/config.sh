@@ -8,6 +8,7 @@ BACKUP_PLUGINS=()
 APT_PACKAGES=()
 INSTALLERS=()
 INSTALLER_OPTION_SELECTIONS=()
+FLATPAK_APPS=()
 REMOTE_NAMES=()
 declare -Ag REMOTE_TYPE=()
 declare -Ag REMOTE_HOST=()
@@ -24,6 +25,7 @@ config_reset() {
   APT_PACKAGES=()
   INSTALLERS=()
   INSTALLER_OPTION_SELECTIONS=()
+  FLATPAK_APPS=()
   REMOTE_NAMES=()
   REMOTE_TYPE=()
   REMOTE_HOST=()
@@ -37,6 +39,24 @@ config_initialize_defaults() {
 
   config_read "$defaults_file" \
     || die "Default backup configuration does not exist: $defaults_file"
+}
+
+config_initialize_if_missing() {
+  if [[ ! -f "$MINT_JELLY_CONFIG_FILE" ]]; then
+    config_initialize_defaults
+    config_write
+  fi
+}
+
+validate_flatpak_app_spec() {
+  local spec="$1"
+  local remote branch
+
+  [[ "$spec" =~ ^(user|system)\|([A-Za-z0-9][A-Za-z0-9._-]*)\|([A-Za-z0-9][A-Za-z0-9._-]+)\|([A-Za-z0-9][A-Za-z0-9._-]*)$ ]] \
+    || return 1
+  remote="${BASH_REMATCH[2]}"
+  branch="${BASH_REMATCH[4]}"
+  validate_safe_name "$remote" && validate_safe_name "$branch"
 }
 
 resolve_backup_source_spec() {
@@ -96,17 +116,17 @@ config_validate_remote() {
 }
 
 config_validate() {
-  local source plugin package installer selection option owner name
+  local source plugin package installer selection option owner name flatpak_app
+  local flatpak_scope flatpak_remote flatpak_id flatpak_branch flatpak_target
   local -A seen_sources=() seen_plugins=() seen_packages=() seen_installers=()
   local -A seen_installer_options=()
+  local -A seen_flatpak_apps=()
+  local -A seen_flatpak_targets=()
 
   [[ "$CONFIG_VERSION" == '1' ]] \
     || die "Unsupported configuration version: $CONFIG_VERSION"
   [[ "$HISTORY_KEEP" =~ ^(0|[1-9][0-9]*)$ ]] \
     || die 'history_keep must be a non-negative integer without leading zeroes.'
-  (( ${#BACKUP_SOURCE_SPECS[@]} + ${#BACKUP_PLUGINS[@]} > 0 )) \
-    || die 'The configuration must contain at least one source or plugin.'
-
   for source in "${BACKUP_SOURCE_SPECS[@]}"; do
     validate_backup_source_spec "$source" \
       || die "Backup source must be ~/... or a safe absolute path other than /: $source"
@@ -149,6 +169,19 @@ config_validate() {
     [[ -z "${seen_installer_options[$selection]+set}" ]] \
       || die "Installer option is listed more than once: $selection"
     seen_installer_options["$selection"]=1
+  done
+
+  for flatpak_app in "${FLATPAK_APPS[@]}"; do
+    validate_flatpak_app_spec "$flatpak_app" \
+      || die "Invalid Flatpak application selection: $flatpak_app"
+    [[ -z "${seen_flatpak_apps[$flatpak_app]+set}" ]] \
+      || die "Flatpak application is listed more than once: $flatpak_app"
+    seen_flatpak_apps["$flatpak_app"]=1
+    IFS='|' read -r flatpak_scope flatpak_remote flatpak_id flatpak_branch <<< "$flatpak_app"
+    flatpak_target="$flatpak_scope|$flatpak_id"
+    [[ -z "${seen_flatpak_targets[$flatpak_target]+set}" ]] \
+      || die "Flatpak application has more than one configured origin or branch: $flatpak_target"
+    seen_flatpak_targets["$flatpak_target"]=1
   done
 
   for name in "${REMOTE_NAMES[@]}"; do
@@ -219,6 +252,7 @@ config_read() {
         apt_package) APT_PACKAGES+=("$value") ;;
         installer) INSTALLERS+=("$value") ;;
         installer_option) INSTALLER_OPTION_SELECTIONS+=("$value") ;;
+        flatpak_app) FLATPAK_APPS+=("$value") ;;
         *) die "$file:$line_number: unknown global key '$key'." ;;
       esac
     fi
@@ -229,15 +263,15 @@ config_read() {
 
 config_write() {
   local file="${1:-$MINT_JELLY_CONFIG_FILE}"
-  local temp_file source plugin package installer selection name
+  local temp_file source plugin package installer selection flatpak_app name
 
   config_validate
   ensure_config_dir
-  temp_file="$(mktemp "${MINT_JELLY_CONFIG_DIR}/.backup.conf.XXXXXX")"
+  temp_file="$(mktemp "${MINT_JELLY_CONFIG_DIR}/.config.ini.XXXXXX")"
   chmod 0600 -- "$temp_file"
 
   {
-    printf '# Mint Jelly backup configuration\n'
+    printf '# Mint Jelly configuration\n'
     printf 'version=%s\n' "$CONFIG_VERSION"
     [[ -n "$DEFAULT_REMOTE" ]] && printf 'default_remote=%s\n' "$DEFAULT_REMOTE"
     printf 'history_keep=%s\n' "$HISTORY_KEEP"
@@ -255,6 +289,9 @@ config_write() {
     done
     for selection in "${INSTALLER_OPTION_SELECTIONS[@]}"; do
       printf 'installer_option=%s\n' "$selection"
+    done
+    for flatpak_app in "${FLATPAK_APPS[@]}"; do
+      printf 'flatpak_app=%s\n' "$flatpak_app"
     done
 
     for name in "${REMOTE_NAMES[@]}"; do

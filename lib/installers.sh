@@ -135,12 +135,13 @@ load_installer_directory() {
 }
 
 load_installers() {
-  local directory
+  local directory installers_root
   local -a directories=()
 
   installer_reset_registry
+  installers_root="${MINT_JELLY_INSTALLERS_DIR:-$SCRIPT_DIR/installers}"
   shopt -s nullglob
-  directories=("$SCRIPT_DIR/installers/"*)
+  directories=("$installers_root/"*)
   shopt -u nullglob
   for directory in "${directories[@]}"; do
     [[ -d "$directory" ]] || continue

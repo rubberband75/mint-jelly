@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if [[ "${1-}" == '--no-generate' && "${2-}" == 'pkgnames' ]]; then
+  printf 'inkscape\n'
+  printf 'inkscape-common\n'
+  exit 0
+fi
+
+if [[ "${1-}" == 'show' ]]; then
+  printf 'Package: %s\n' "${2-}"
+  exit 0
+fi
+
+exit 0

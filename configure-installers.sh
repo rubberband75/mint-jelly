@@ -14,7 +14,7 @@ source "$SCRIPT_DIR/lib/installers.sh"
 source "$SCRIPT_DIR/lib/checklist.sh"
 
 usage() {
-  printf 'Usage: %s\n' "${MINT_JELLY_COMMAND:-mint-jelly config installers}"
+  printf 'Usage: mint-jelly software config\n'
 }
 
 array_contains() {

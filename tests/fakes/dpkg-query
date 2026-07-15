@@ -5,4 +5,13 @@ if [[ "${MINT_JELLY_TEST_DPKG_QUERY_ERROR:-false}" == 'true' ]]; then
   printf 'simulated dpkg database failure\n' >&2
   exit 2
 fi
+if [[ "${1-}" == '-W' ]]; then
+  package="${@: -1}"
+  for installed in ${MINT_JELLY_TEST_DPKG_INSTALLED:-}; do
+    if [[ "$installed" == "$package" ]]; then
+      printf 'install ok installed'
+      exit 0
+    fi
+  done
+fi
 exit 1

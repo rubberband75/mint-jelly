@@ -23,6 +23,8 @@ lib/recovery.sh
 lib/remote.sh
 backup-plugins/firefox.sh
 backup-plugins/cinnamon-desktop.sh
+installers/datagrip/installer.conf
+installers/datagrip/run.sh
 installers/discord/installer.conf
 installers/discord/run.sh
 installers/heroic/installer.conf

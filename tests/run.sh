@@ -68,6 +68,8 @@ install -m 0600 -- \
   "$PROJECT_ROOT/tests/fixtures/backup.conf" \
   "$TEST_CONFIG/mint-jelly/backup.conf"
 
+bash "$PROJECT_ROOT/tests/datagrip-installer.sh" >/dev/null
+
 help_output="$(HOME="$TEST_HOME" XDG_DATA_HOME="$TEST_DATA" "$PROJECT_ROOT/install.sh" --help)"
 [[ "$help_output" == Usage:* ]] || fail 'Installer help did not print usage.'
 assert_not_exists "$TEST_DATA/mint-jelly"

@@ -275,13 +275,16 @@ verifies its result.
 Independent failures are logged and summarized without hiding a nonzero final
 status. `--dry-run` performs no package download, `sudo`, or installation.
 
-Bundled installers are `discord`, `heroic`, `minecraft-launcher`, `postman`,
-and `slack`. Several vendors do not publish checksums for their download
-endpoints; Mint Jelly displays an explicit warning when verification is
-limited to HTTPS plus package metadata or archive-layout validation.
+Bundled installers are `datagrip`, `discord`, `heroic`, `minecraft-launcher`,
+`postman`, and `slack`. Several vendors do not publish checksums for their
+download endpoints; Mint Jelly displays an explicit warning when verification
+is limited to HTTPS plus package metadata or archive-layout validation.
 Interactive confirmation acknowledges that warning. An unattended `--yes` run
 must also include `--allow-weak-verification` before any affected installer can
-run. Heroic fails closed unless its release metadata contains a SHA-256 digest.
+run. DataGrip and Heroic fail closed unless their release metadata contains a
+valid SHA-256 digest. DataGrip is installed from JetBrains' official standalone
+Linux bundle under `/opt`, with a stable `datagrip` command and Cinnamon menu
+entry. DataGrip handles license or trial activation on first launch.
 
 ## Restore behavior
 

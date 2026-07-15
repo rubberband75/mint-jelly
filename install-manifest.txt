@@ -46,4 +46,6 @@ installers/postman/installer.conf
 installers/postman/run.sh
 installers/slack/installer.conf
 installers/slack/run.sh
+installers/vscode/installer.conf
+installers/vscode/run.sh
 completions/mint-jelly.bash

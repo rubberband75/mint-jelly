@@ -33,6 +33,7 @@ bash "$PROJECT_ROOT/tests/datagrip-installer.sh" >/dev/null
 bash "$PROJECT_ROOT/tests/docker-engine-installer.sh" >/dev/null
 bash "$PROJECT_ROOT/tests/google-cloud-cli-installer.sh" >/dev/null
 bash "$PROJECT_ROOT/tests/nvm-installer.sh" >/dev/null
+bash "$PROJECT_ROOT/tests/vscode-installer.sh" >/dev/null
 
 install_env=(
   HOME="$TEST_HOME"

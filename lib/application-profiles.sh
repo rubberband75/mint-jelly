@@ -5,7 +5,7 @@
 
 APPLICATION_PROFILE_IDS=(
   datagrip discord docker-engine firefox google-cloud-cli heroic makemkv
-  minecraft-launcher nvm postman slack
+  minecraft-launcher nvm postman slack vscode
 )
 declare -Ag APPLICATION_PROFILE_NAME=(
   [datagrip]='DataGrip'
@@ -19,6 +19,7 @@ declare -Ag APPLICATION_PROFILE_NAME=(
   [nvm]='NVM / npm user configuration'
   [postman]='Postman'
   [slack]='Slack Desktop'
+  [vscode]='Visual Studio Code'
 )
 declare -Ag APPLICATION_PROFILE_PATHS=(
   [datagrip]='~/.config/JetBrains/DataGrip* ~/.local/share/JetBrains/DataGrip*'
@@ -32,6 +33,7 @@ declare -Ag APPLICATION_PROFILE_PATHS=(
   [nvm]='~/.npmrc ~/.config/configstore'
   [postman]='~/.config/Postman ~/.var/app/com.getpostman.Postman/config/Postman'
   [slack]='~/.config/Slack ~/.var/app/com.slack.Slack/config/Slack'
+  [vscode]='~/.config/Code/User ~/.vscode/argv.json'
 )
 declare -Ag APPLICATION_PROFILE_INSTALLER=(
   [datagrip]='datagrip'
@@ -44,12 +46,14 @@ declare -Ag APPLICATION_PROFILE_INSTALLER=(
   [nvm]='nvm'
   [postman]='postman'
   [slack]='slack'
+  [vscode]='vscode'
 )
 declare -Ag APPLICATION_PROFILE_APT=(
   [firefox]='firefox'
 )
 declare -Ag APPLICATION_PROFILE_PROCESS=(
   [firefox]='firefox'
+  [vscode]='code'
 )
 
 application_profile_exists() {

@@ -114,6 +114,7 @@ software are selected automatically. The bundled catalog currently includes:
 - NVM/npm user configuration
 - Postman
 - Slack Desktop
+- Visual Studio Code
 
 Only configuration and durable state are captured. Caches and installed
 application payloads are excluded. Firefox is an application profile; there is
@@ -121,6 +122,14 @@ no Firefox backup plugin. Docker's `~/.docker` CLI state is included, which can
 contain registry credentials, so snapshot storage must be treated as sensitive.
 Docker images, containers, volumes, `/var/lib/docker`, and `/var/lib/containerd`
 are runtime data and are deliberately excluded.
+
+The `vscode` installer follows Microsoft's desktop flow: it downloads the
+current stable `.deb`, verifies Microsoft's published SHA-256 digest and Debian
+metadata, pre-authorizes the package's signed APT repository setup, and installs
+the package. Later `software update vscode` operations use that APT repository.
+The application profile captures VS Code's `User` data and `argv.json`.
+Installed extensions are deliberately excluded as application payloads; VS Code
+Settings Sync remains the correct mechanism for reinstalling them.
 
 ## Cinnamon settings
 

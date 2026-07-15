@@ -69,6 +69,7 @@ install -m 0600 -- \
   "$TEST_CONFIG/mint-jelly/backup.conf"
 
 bash "$PROJECT_ROOT/tests/datagrip-installer.sh" >/dev/null
+bash "$PROJECT_ROOT/tests/google-cloud-cli-installer.sh" >/dev/null
 
 help_output="$(HOME="$TEST_HOME" XDG_DATA_HOME="$TEST_DATA" "$PROJECT_ROOT/install.sh" --help)"
 [[ "$help_output" == Usage:* ]] || fail 'Installer help did not print usage.'
@@ -249,6 +250,22 @@ version_output="$(
 [[ -x "$TEST_DATA/mint-jelly/current/software.sh" ]] \
   || fail 'Installed software command is not executable.'
 
+(
+  SCRIPT_DIR="$TEST_DATA/mint-jelly/current"
+  # shellcheck source=/dev/null
+  source "$SCRIPT_DIR/lib/common.sh"
+  # shellcheck source=/dev/null
+  source "$SCRIPT_DIR/lib/installers.sh"
+  load_installers
+  installer_exists google-cloud-cli \
+    || fail 'Installed release did not load the Google Cloud CLI installer.'
+  read -r -a google_cloud_options <<< "${INSTALLER_OPTION_IDS[google-cloud-cli]}"
+  ((${#google_cloud_options[@]} == 25)) \
+    || fail 'Google Cloud CLI installer did not expose all 25 optional packages.'
+  installer_option_exists google-cloud-cli kubectl \
+    || fail 'Google Cloud CLI installer did not expose kubectl.'
+)
+
 # Recovery manifests are inert, bounded input. Exercise rejection separately
 # from the CLI so failures cannot be mistaken for remote-connection errors.
 MANIFEST_TEST_DIR="$TEST_ROOT/manifest-tests"
@@ -260,6 +277,11 @@ assert_recovery_rejected 'an unknown key' "$MANIFEST_TEST_DIR/unknown"
 cp -- "$PROJECT_ROOT/tests/fixtures/recovery.manifest" "$MANIFEST_TEST_DIR/duplicate"
 printf 'source=/home/tester/.ssh\n' >> "$MANIFEST_TEST_DIR/duplicate"
 assert_recovery_rejected 'a duplicate source' "$MANIFEST_TEST_DIR/duplicate"
+
+cp -- "$PROJECT_ROOT/tests/fixtures/recovery.manifest" "$MANIFEST_TEST_DIR/orphan-installer-option"
+printf 'installer_option=google-cloud-cli:kubectl\n' >> "$MANIFEST_TEST_DIR/orphan-installer-option"
+assert_recovery_rejected 'an option for an unselected installer' \
+  "$MANIFEST_TEST_DIR/orphan-installer-option"
 
 head -n 6 "$PROJECT_ROOT/tests/fixtures/recovery.manifest" > "$MANIFEST_TEST_DIR/long-line"
 long_component="$(head -c 4096 /dev/zero | tr '\0' a)"
@@ -587,7 +609,8 @@ assert_not_exists "$TEST_REMOTE/SSH-PATH-SAFETY-OUTSIDE/child"
   config_read
   REMOTE_ROOT_PATH[alpha]="$TEST_REMOTE"
   APT_PACKAGES=(git)
-  INSTALLERS=(postman)
+  INSTALLERS=(postman google-cloud-cli)
+  INSTALLER_OPTION_SELECTIONS=(google-cloud-cli:kubectl)
   config_write
 )
 "$LAUNCHER" config remote test alpha >/dev/null
@@ -602,6 +625,10 @@ grep -qx 'apt_package=git' "$BACKED_MANIFEST" \
   || fail 'Backup recovery manifest did not snapshot the configured APT package.'
 grep -qx 'installer=postman' "$BACKED_MANIFEST" \
   || fail 'Backup recovery manifest did not snapshot the configured installer.'
+grep -qx 'installer=google-cloud-cli' "$BACKED_MANIFEST" \
+  || fail 'Backup recovery manifest did not snapshot the configurable installer.'
+grep -qx 'installer_option=google-cloud-cli:kubectl' "$BACKED_MANIFEST" \
+  || fail 'Backup recovery manifest did not snapshot the installer option.'
 "$LAUNCHER" restore --remote alpha --source-host "$BACKED_HOST" --dry-run >/dev/null
 
 cp -- "$BACKED_MANIFEST" "$BACKED_MANIFEST.platform-match"

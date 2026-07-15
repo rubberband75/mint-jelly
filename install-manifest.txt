@@ -27,6 +27,8 @@ installers/datagrip/installer.conf
 installers/datagrip/run.sh
 installers/discord/installer.conf
 installers/discord/run.sh
+installers/google-cloud-cli/installer.conf
+installers/google-cloud-cli/run.sh
 installers/heroic/installer.conf
 installers/heroic/run.sh
 installers/minecraft-launcher/installer.conf

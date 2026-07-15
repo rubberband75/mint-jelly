@@ -28,6 +28,19 @@ array_contains() {
   return 1
 }
 
+installer_option_value() {
+  local wanted_installer="$1"
+  local selection
+  local -a options=()
+
+  for selection in "${INSTALLER_OPTION_SELECTIONS[@]}"; do
+    if [[ "${selection%%:*}" == "$wanted_installer" ]]; then
+      options+=("${selection#*:}")
+    fi
+  done
+  printf '%s' "${options[*]}"
+}
+
 if [[ $# -gt 0 ]]; then
   case "$1" in
     -h|--help)
@@ -51,7 +64,8 @@ for installer in "${INSTALLER_NAMES[@]}"; do
   CHECKLIST_LABELS+=("${INSTALLER_DISPLAY_NAME[$installer]} ($installer)")
   detail="${INSTALLER_DESCRIPTION[$installer]}"
   check_status=0
-  if "${INSTALLER_RUN_SCRIPT[$installer]}" check >/dev/null 2>&1; then
+  if env MINT_JELLY_INSTALLER_OPTIONS="$(installer_option_value "$installer")" \
+    "${INSTALLER_RUN_SCRIPT[$installer]}" check >/dev/null 2>&1; then
     detail+=' [installed]'
   else
     check_status=$?
@@ -89,14 +103,69 @@ else
   exit 0
 fi
 
-INSTALLERS=()
+NEW_INSTALLERS=()
 for installer in "${CHECKLIST_RESULT[@]}"; do
   if array_contains "$installer" "${INSTALLER_NAMES[@]}"; then
-    INSTALLERS+=("$installer")
+    NEW_INSTALLERS+=("$installer")
   else
     warn "Removing unavailable software installer from the configuration: $installer"
   fi
 done
+
+NEW_INSTALLER_OPTION_SELECTIONS=()
+for installer in "${NEW_INSTALLERS[@]}"; do
+  read -r -a available_options <<< "${INSTALLER_OPTION_IDS[$installer]-}"
+  ((${#available_options[@]} > 0)) || continue
+  installer_was_configured='false'
+  if array_contains "$installer" "${INSTALLERS[@]}"; then
+    installer_was_configured='true'
+  fi
+
+  CHECKLIST_IDS=("${available_options[@]}")
+  CHECKLIST_LABELS=("${available_options[@]}")
+  CHECKLIST_DETAILS=()
+  CHECKLIST_INITIAL_SELECTED=()
+  for option in "${available_options[@]}"; do
+    detail="Optional package for ${INSTALLER_DISPLAY_NAME[$installer]}"
+    if array_contains "$installer:$option" "${INSTALLER_OPTION_SELECTIONS[@]}"; then
+      CHECKLIST_INITIAL_SELECTED+=(1)
+      detail+=' [configured]'
+    elif [[ "$installer_was_configured" == 'false' ]] \
+      && "${INSTALLER_RUN_SCRIPT[$installer]}" option-check "$option" >/dev/null 2>&1; then
+      CHECKLIST_INITIAL_SELECTED+=(1)
+      detail+=' [installed; selected by default]'
+    else
+      CHECKLIST_INITIAL_SELECTED+=(0)
+    fi
+    CHECKLIST_DETAILS+=("$detail")
+  done
+  CHECKLIST_TITLE="Select options for ${INSTALLER_DISPLAY_NAME[$installer]}"
+  CHECKLIST_NOTE="These packages are installed with ${INSTALLER_DISPLAY_NAME[$installer]} and saved in its recovery plan."
+
+  if checklist_run; then
+    :
+  else
+    status=$?
+    (( status == 1 )) || exit "$status"
+    log 'Installer configuration unchanged.'
+    exit 0
+  fi
+  for option in "${CHECKLIST_RESULT[@]}"; do
+    NEW_INSTALLER_OPTION_SELECTIONS+=("$installer:$option")
+  done
+done
+
+for selection in "${INSTALLER_OPTION_SELECTIONS[@]}"; do
+  installer="${selection%%:*}"
+  option="${selection#*:}"
+  if array_contains "$installer" "${NEW_INSTALLERS[@]}" \
+    && ! installer_option_exists "$installer" "$option"; then
+    warn "Removing unavailable option '$option' from installer '$installer'."
+  fi
+done
+
+INSTALLERS=("${NEW_INSTALLERS[@]}")
+INSTALLER_OPTION_SELECTIONS=("${NEW_INSTALLER_OPTION_SELECTIONS[@]}")
 config_write
 if (( ${#INSTALLERS[@]} == 0 )); then
   log "All software installers disabled in $MINT_JELLY_CONFIG_FILE"

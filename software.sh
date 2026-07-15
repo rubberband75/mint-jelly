@@ -62,6 +62,27 @@ installer_verification_description() {
   esac
 }
 
+installer_option_value() {
+  local wanted_installer="$1"
+  local selection
+  local -a options=()
+
+  for selection in "${RECOVERY_INSTALLER_OPTIONS[@]}"; do
+    if [[ "${selection%%:*}" == "$wanted_installer" ]]; then
+      options+=("${selection#*:}")
+    fi
+  done
+  printf '%s' "${options[*]}"
+}
+
+run_installer_action() {
+  local installer="$1"
+  local action="$2"
+
+  env MINT_JELLY_INSTALLER_OPTIONS="$(installer_option_value "$installer")" \
+    "${INSTALLER_RUN_SCRIPT[$installer]}" "$action"
+}
+
 classify_installer() {
   local installer="$1"
   local status
@@ -71,8 +92,8 @@ classify_installer() {
     return
   fi
 
-  if "${INSTALLER_RUN_SCRIPT[$installer]}" check >/dev/null 2>&1; then
-    if "${INSTALLER_RUN_SCRIPT[$installer]}" verify >/dev/null 2>&1; then
+  if run_installer_action "$installer" check >/dev/null 2>&1; then
+    if run_installer_action "$installer" verify >/dev/null 2>&1; then
       INSTALLED_INSTALLERS+=("$installer")
     else
       CHECK_FAILED_INSTALLERS+=("$installer")
@@ -109,7 +130,7 @@ print_list() {
 print_installer_list() {
   local label="$1"
   shift
-  local installer verification
+  local installer verification options
 
   printf '%s (%d):\n' "$label" "$#"
   if (( $# == 0 )); then
@@ -118,8 +139,10 @@ print_installer_list() {
   fi
   for installer in "$@"; do
     verification="$(installer_verification_description "$installer")"
+    options="$(installer_option_value "$installer")"
     printf '  %s - %s [verification: %s]\n' \
       "$installer" "${INSTALLER_DISPLAY_NAME[$installer]}" "$verification"
+    [[ -z "$options" ]] || printf '    options: %s\n' "$options"
   done
 }
 
@@ -318,7 +341,9 @@ if [[ "$INSTALLERS_ONLY" != 'true' ]]; then
 fi
 if [[ "$APT_ONLY" != 'true' ]]; then
   INSTALLERS=("${RECOVERY_INSTALLERS[@]}")
+  INSTALLER_OPTION_SELECTIONS=("${RECOVERY_INSTALLER_OPTIONS[@]}")
   require_configured_installers_available
+  require_configured_installer_options_available
   for installer in "${INSTALLERS[@]}"; do
     classify_installer "$installer"
   done
@@ -405,12 +430,14 @@ for installer in "${MISSING_INSTALLERS[@]}"; do
       >> "$LOG_DIR/$installer.log"
     if env MINT_JELLY_ASSUME_YES="$ASSUME_YES" \
       MINT_JELLY_INSTALLER_STATE_DIR="$LOG_DIR/$installer" \
+      MINT_JELLY_INSTALLER_OPTIONS="$(installer_option_value "$installer")" \
       "${INSTALLER_RUN_SCRIPT[$installer]}" install; then
       install_succeeded='true'
     fi
   elif run_logged "$LOG_DIR/$installer.log" \
     env MINT_JELLY_ASSUME_YES="$ASSUME_YES" \
       MINT_JELLY_INSTALLER_STATE_DIR="$LOG_DIR/$installer" \
+      MINT_JELLY_INSTALLER_OPTIONS="$(installer_option_value "$installer")" \
       "${INSTALLER_RUN_SCRIPT[$installer]}" install; then
     install_succeeded='true'
   fi
@@ -419,7 +446,7 @@ for installer in "${MISSING_INSTALLERS[@]}"; do
     FAILED_COMPONENTS+=("$installer")
     continue
   fi
-  if ! "${INSTALLER_RUN_SCRIPT[$installer]}" verify >> "$LOG_DIR/$installer.log" 2>&1; then
+  if ! run_installer_action "$installer" verify >> "$LOG_DIR/$installer.log" 2>&1; then
     warn "Installer '$installer' did not pass post-install verification."
     FAILED_COMPONENTS+=("$installer")
     continue

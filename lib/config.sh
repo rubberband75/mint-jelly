@@ -7,6 +7,7 @@ BACKUP_SOURCE_SPECS=()
 BACKUP_PLUGINS=()
 APT_PACKAGES=()
 INSTALLERS=()
+INSTALLER_OPTION_SELECTIONS=()
 REMOTE_NAMES=()
 declare -Ag REMOTE_TYPE=()
 declare -Ag REMOTE_HOST=()
@@ -22,6 +23,7 @@ config_reset() {
   BACKUP_PLUGINS=()
   APT_PACKAGES=()
   INSTALLERS=()
+  INSTALLER_OPTION_SELECTIONS=()
   REMOTE_NAMES=()
   REMOTE_TYPE=()
   REMOTE_HOST=()
@@ -94,8 +96,9 @@ config_validate_remote() {
 }
 
 config_validate() {
-  local source plugin package installer name
+  local source plugin package installer selection option owner name
   local -A seen_sources=() seen_plugins=() seen_packages=() seen_installers=()
+  local -A seen_installer_options=()
 
   [[ "$CONFIG_VERSION" == '1' ]] \
     || die "Unsupported configuration version: $CONFIG_VERSION"
@@ -132,6 +135,20 @@ config_validate() {
     [[ -z "${seen_installers[$installer]+set}" ]] \
       || die "Installer is listed more than once: $installer"
     seen_installers["$installer"]=1
+  done
+
+  for selection in "${INSTALLER_OPTION_SELECTIONS[@]}"; do
+    [[ "$selection" =~ ^([A-Za-z0-9][A-Za-z0-9._-]*):([A-Za-z0-9][A-Za-z0-9._-]*)$ ]] \
+      || die "Invalid installer option selection: $selection"
+    owner="${BASH_REMATCH[1]}"
+    option="${BASH_REMATCH[2]}"
+    validate_safe_name "$owner" && validate_safe_name "$option" \
+      || die "Invalid installer option selection: $selection"
+    [[ -n "${seen_installers[$owner]+set}" ]] \
+      || die "Installer option '$selection' belongs to an installer that is not selected."
+    [[ -z "${seen_installer_options[$selection]+set}" ]] \
+      || die "Installer option is listed more than once: $selection"
+    seen_installer_options["$selection"]=1
   done
 
   for name in "${REMOTE_NAMES[@]}"; do
@@ -201,6 +218,7 @@ config_read() {
         backup_plugin) BACKUP_PLUGINS+=("$value") ;;
         apt_package) APT_PACKAGES+=("$value") ;;
         installer) INSTALLERS+=("$value") ;;
+        installer_option) INSTALLER_OPTION_SELECTIONS+=("$value") ;;
         *) die "$file:$line_number: unknown global key '$key'." ;;
       esac
     fi
@@ -211,7 +229,7 @@ config_read() {
 
 config_write() {
   local file="${1:-$MINT_JELLY_CONFIG_FILE}"
-  local temp_file source plugin package installer name
+  local temp_file source plugin package installer selection name
 
   config_validate
   ensure_config_dir
@@ -234,6 +252,9 @@ config_write() {
     done
     for installer in "${INSTALLERS[@]}"; do
       printf 'installer=%s\n' "$installer"
+    done
+    for selection in "${INSTALLER_OPTION_SELECTIONS[@]}"; do
+      printf 'installer_option=%s\n' "$selection"
     done
 
     for name in "${REMOTE_NAMES[@]}"; do

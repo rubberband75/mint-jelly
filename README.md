@@ -185,6 +185,8 @@ backup_plugin=cinnamon-desktop
 apt_package=git
 apt_package=vlc
 installer=postman
+installer=google-cloud-cli
+installer_option=google-cloud-cli:kubectl
 
 [remote personal-server]
 type=ssh
@@ -205,7 +207,9 @@ Repeat `source=` for paths that are known in advance. Sources can use an
 absolute path or a leading `~/`, which is expanded without executing the
 configuration as shell code. Repeat `backup_plugin=` for sources that require
 runtime discovery or restore hooks. Repeat `apt_package=` and `installer=` for
-software that should be present after recovery.
+software that should be present after recovery. Installer-specific selections
+use `installer_option=INSTALLER:OPTION`; these are written by the installer
+picker and must belong to a selected bundled installer.
 
 Use `mint-jelly config backup-plugins`, `mint-jelly config apt select`, and
 `mint-jelly config installers` to edit selections with an interactive checkbox
@@ -275,16 +279,27 @@ verifies its result.
 Independent failures are logged and summarized without hiding a nonzero final
 status. `--dry-run` performs no package download, `sudo`, or installation.
 
-Bundled installers are `datagrip`, `discord`, `heroic`, `minecraft-launcher`,
-`postman`, and `slack`. Several vendors do not publish checksums for their
-download endpoints; Mint Jelly displays an explicit warning when verification
-is limited to HTTPS plus package metadata or archive-layout validation.
+Bundled installers are `datagrip`, `discord`, `google-cloud-cli`, `heroic`,
+`minecraft-launcher`, `postman`, and `slack`. Several vendors do not publish
+checksums for their download endpoints; Mint Jelly displays an explicit warning
+when verification is limited to HTTPS plus package metadata or archive-layout
+validation.
 Interactive confirmation acknowledges that warning. An unattended `--yes` run
 must also include `--allow-weak-verification` before any affected installer can
 run. DataGrip and Heroic fail closed unless their release metadata contains a
 valid SHA-256 digest. DataGrip is installed from JetBrains' official standalone
 Linux bundle under `/opt`, with a stable `datagrip` command and Cinnamon menu
 entry. DataGrip handles license or trial activation on first launch.
+
+The Google Cloud CLI installer follows Google's Debian/Ubuntu repository
+procedure from the [official installation guide](https://docs.cloud.google.com/sdk/docs/install-sdk#deb):
+it downloads and validates the current Artifact Registry signing
+key, installs it at `/usr/share/keyrings/cloud.google.gpg`, creates a single
+APT source restricted with `signed-by`, and installs `google-cloud-cli` plus
+the optional packages selected on the second installer-configuration screen.
+The first time this installer is selected, optional packages already installed
+locally are checked automatically; later visits preserve the explicit saved
+selection.
 
 ## Restore behavior
 

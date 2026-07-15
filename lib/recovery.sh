@@ -17,6 +17,7 @@
 #   RECOVERY_BACKUP_PLUGINS[]
 #   RECOVERY_APT_PACKAGES[]
 #   RECOVERY_INSTALLERS[]
+#   RECOVERY_INSTALLER_OPTIONS[]
 #
 # Public API:
 #   recovery_reset
@@ -54,6 +55,7 @@ RECOVERY_MANIFEST_MAX_SOURCES=256
 RECOVERY_MANIFEST_MAX_BACKUP_PLUGINS=64
 RECOVERY_MANIFEST_MAX_APT_PACKAGES=2048
 RECOVERY_MANIFEST_MAX_INSTALLERS=128
+RECOVERY_MANIFEST_MAX_INSTALLER_OPTIONS=512
 
 RECOVERY_FORMAT='1'
 RECOVERY_HOSTNAME=''
@@ -65,6 +67,7 @@ RECOVERY_SOURCES=()
 RECOVERY_BACKUP_PLUGINS=()
 RECOVERY_APT_PACKAGES=()
 RECOVERY_INSTALLERS=()
+RECOVERY_INSTALLER_OPTIONS=()
 
 recovery_reset() {
   RECOVERY_FORMAT='1'
@@ -77,6 +80,7 @@ recovery_reset() {
   RECOVERY_BACKUP_PLUGINS=()
   RECOVERY_APT_PACKAGES=()
   RECOVERY_INSTALLERS=()
+  RECOVERY_INSTALLER_OPTIONS=()
 }
 
 _recovery_has_control_character() {
@@ -127,6 +131,8 @@ _recovery_validate_serialized_limits() {
     || die "Recovery manifest exceeds the $RECOVERY_MANIFEST_MAX_APT_PACKAGES-APT-package limit."
   (( ${#RECOVERY_INSTALLERS[@]} <= RECOVERY_MANIFEST_MAX_INSTALLERS )) \
     || die "Recovery manifest exceeds the $RECOVERY_MANIFEST_MAX_INSTALLERS-installer limit."
+  (( ${#RECOVERY_INSTALLER_OPTIONS[@]} <= RECOVERY_MANIFEST_MAX_INSTALLER_OPTIONS )) \
+    || die "Recovery manifest exceeds the $RECOVERY_MANIFEST_MAX_INSTALLER_OPTIONS-installer-option limit."
 
   total_lines=$((
     ${#scalar_lines[@]}
@@ -134,6 +140,7 @@ _recovery_validate_serialized_limits() {
     + ${#RECOVERY_BACKUP_PLUGINS[@]}
     + ${#RECOVERY_APT_PACKAGES[@]}
     + ${#RECOVERY_INSTALLERS[@]}
+    + ${#RECOVERY_INSTALLER_OPTIONS[@]}
   ))
   (( total_lines <= RECOVERY_MANIFEST_MAX_LINES )) \
     || die "Recovery manifest exceeds the $RECOVERY_MANIFEST_MAX_LINES-line limit."
@@ -165,6 +172,12 @@ _recovery_validate_serialized_limits() {
     line="installer=$value"
     (( ${#line} <= RECOVERY_MANIFEST_MAX_LINE_BYTES )) \
       || die "Recovery manifest installer line exceeds $RECOVERY_MANIFEST_MAX_LINE_BYTES bytes."
+    ((total_bytes += ${#line} + 1))
+  done
+  for value in "${RECOVERY_INSTALLER_OPTIONS[@]}"; do
+    line="installer_option=$value"
+    (( ${#line} <= RECOVERY_MANIFEST_MAX_LINE_BYTES )) \
+      || die "Recovery manifest installer_option line exceeds $RECOVERY_MANIFEST_MAX_LINE_BYTES bytes."
     ((total_bytes += ${#line} + 1))
   done
   (( total_bytes <= RECOVERY_MANIFEST_MAX_BYTES )) \
@@ -255,11 +268,12 @@ recovery_populate_platform() {
 }
 
 recovery_validate() {
-  local value existing
+  local value existing owner option
   local -A seen_sources=()
   local -A seen_plugins=()
   local -A seen_packages=()
   local -A seen_installers=()
+  local -A seen_installer_options=()
 
   [[ "$RECOVERY_FORMAT" == '1' ]] \
     || die "Unsupported recovery manifest format: $RECOVERY_FORMAT"
@@ -311,6 +325,20 @@ recovery_validate() {
     [[ -z "${seen_installers[$value]+set}" ]] \
       || die "Recovery manifest contains a duplicate installer: $value"
     seen_installers["$value"]=1
+  done
+
+  for value in "${RECOVERY_INSTALLER_OPTIONS[@]}"; do
+    [[ "$value" =~ ^([A-Za-z0-9][A-Za-z0-9._-]*):([A-Za-z0-9][A-Za-z0-9._-]*)$ ]] \
+      || die "Recovery manifest has an unsafe installer_option: $value"
+    owner="${BASH_REMATCH[1]}"
+    option="${BASH_REMATCH[2]}"
+    validate_safe_name "$owner" && validate_safe_name "$option" \
+      || die "Recovery manifest has an unsafe installer_option: $value"
+    [[ -n "${seen_installers[$owner]+set}" ]] \
+      || die "Recovery manifest installer_option belongs to an unselected installer: $value"
+    [[ -z "${seen_installer_options[$value]+set}" ]] \
+      || die "Recovery manifest contains a duplicate installer_option: $value"
+    seen_installer_options["$value"]=1
   done
 
   _recovery_validate_serialized_limits
@@ -393,6 +421,11 @@ recovery_read() {
           || die "$file:$line_number exceeds the installer-entry limit."
         RECOVERY_INSTALLERS+=("$value")
         ;;
+      installer_option)
+        (( ${#RECOVERY_INSTALLER_OPTIONS[@]} < RECOVERY_MANIFEST_MAX_INSTALLER_OPTIONS )) \
+          || die "$file:$line_number exceeds the installer_option-entry limit."
+        RECOVERY_INSTALLER_OPTIONS+=("$value")
+        ;;
       *) die "$file:$line_number: unknown recovery manifest key '$key'." ;;
     esac
   done < "$file"
@@ -425,6 +458,9 @@ recovery_write_stdout() {
   done
   for value in "${RECOVERY_INSTALLERS[@]}"; do
     printf 'installer=%s\n' "$value" || return 1
+  done
+  for value in "${RECOVERY_INSTALLER_OPTIONS[@]}"; do
+    printf 'installer_option=%s\n' "$value" || return 1
   done
 }
 

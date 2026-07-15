@@ -140,6 +140,7 @@ load_installers
 
 config_read
 require_configured_installers_available
+require_configured_installer_options_available
 if [[ -z "$SELECTED_REMOTE" ]]; then
   [[ -n "$DEFAULT_REMOTE" ]] \
     || die 'No default remote is configured. Run: mint-jelly config remote add'
@@ -213,6 +214,7 @@ RECOVERY_SOURCES=("${MANIFEST_SOURCES[@]}")
 RECOVERY_BACKUP_PLUGINS=("${BACKUP_PLUGINS[@]}")
 RECOVERY_APT_PACKAGES=("${APT_PACKAGES[@]}")
 RECOVERY_INSTALLERS=("${INSTALLERS[@]}")
+RECOVERY_INSTALLER_OPTIONS=("${INSTALLER_OPTION_SELECTIONS[@]}")
 recovery_write_file "$RECOVERY_TEMP"
 
 if [[ "$DRY_RUN" == 'false' ]]; then

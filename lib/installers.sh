@@ -12,6 +12,7 @@ declare -Ag INSTALLER_INTERACTIVE=()
 declare -Ag INSTALLER_ARCHITECTURES=()
 declare -Ag INSTALLER_VERIFICATION=()
 declare -Ag INSTALLER_RUN_SCRIPT=()
+declare -Ag INSTALLER_OPTION_IDS=()
 
 installer_reset_registry() {
   INSTALLER_NAMES=()
@@ -23,6 +24,7 @@ installer_reset_registry() {
   INSTALLER_ARCHITECTURES=()
   INSTALLER_VERIFICATION=()
   INSTALLER_RUN_SCRIPT=()
+  INSTALLER_OPTION_IDS=()
 }
 
 installer_metadata_text_is_safe() {
@@ -46,7 +48,9 @@ load_installer_directory() {
   local raw key value line_number=0
   local id='' name='' description='' network='' privilege=''
   local interactive='' architectures='' verification=''
-  local -A seen=()
+  local option
+  local -a options=()
+  local -A seen=() seen_options=()
 
   [[ -d "$directory" && ! -L "$directory" ]] \
     || die "Installer path is not a safe directory: $directory"
@@ -72,9 +76,11 @@ load_installer_directory() {
     key="$(trim "${raw%%=*}")"
     value="$(trim "${raw#*=}")"
     [[ -n "$value" ]] || die "$metadata_file:$line_number: '$key' cannot be empty."
-    [[ -z "${seen[$key]+set}" ]] \
-      || die "$metadata_file:$line_number: duplicate key '$key'."
-    seen["$key"]=1
+    if [[ "$key" != 'option' ]]; then
+      [[ -z "${seen[$key]+set}" ]] \
+        || die "$metadata_file:$line_number: duplicate key '$key'."
+      seen["$key"]=1
+    fi
     case "$key" in
       id) id="$value" ;;
       name) name="$value" ;;
@@ -84,6 +90,14 @@ load_installer_directory() {
       interactive) interactive="$value" ;;
       architectures) architectures="$value" ;;
       verification) verification="$value" ;;
+      option)
+        validate_safe_name "$value" \
+          || die "$metadata_file:$line_number: invalid installer option '$value'."
+        [[ -z "${seen_options[$value]+set}" ]] \
+          || die "$metadata_file:$line_number: duplicate installer option '$value'."
+        seen_options["$value"]=1
+        options+=("$value")
+        ;;
       *) die "$metadata_file:$line_number: unknown key '$key'." ;;
     esac
   done < "$metadata_file"
@@ -117,6 +131,7 @@ load_installer_directory() {
   INSTALLER_ARCHITECTURES["$id"]="$architectures"
   INSTALLER_VERIFICATION["$id"]="$verification"
   INSTALLER_RUN_SCRIPT["$id"]="$run_script"
+  INSTALLER_OPTION_IDS["$id"]="${options[*]}"
 }
 
 load_installers() {
@@ -143,6 +158,30 @@ require_configured_installers_available() {
   for installer in "${INSTALLERS[@]}"; do
     installer_exists "$installer" \
       || die "Unknown installer '$installer'. Available installers: ${INSTALLER_NAMES[*]:-none}"
+  done
+}
+
+installer_option_exists() {
+  local installer="$1"
+  local expected="$2"
+  local option
+
+  for option in ${INSTALLER_OPTION_IDS[$installer]-}; do
+    [[ "$option" == "$expected" ]] && return 0
+  done
+  return 1
+}
+
+require_configured_installer_options_available() {
+  local selection installer option
+
+  for selection in "${INSTALLER_OPTION_SELECTIONS[@]}"; do
+    installer="${selection%%:*}"
+    option="${selection#*:}"
+    installer_exists "$installer" \
+      || die "Installer option '$selection' belongs to an unavailable installer."
+    installer_option_exists "$installer" "$option" \
+      || die "Unknown option '$option' for installer '$installer'."
   done
 }
 

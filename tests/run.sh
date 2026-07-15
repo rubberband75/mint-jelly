@@ -70,6 +70,7 @@ install -m 0600 -- \
 
 bash "$PROJECT_ROOT/tests/datagrip-installer.sh" >/dev/null
 bash "$PROJECT_ROOT/tests/google-cloud-cli-installer.sh" >/dev/null
+bash "$PROJECT_ROOT/tests/nvm-installer.sh" >/dev/null
 
 help_output="$(HOME="$TEST_HOME" XDG_DATA_HOME="$TEST_DATA" "$PROJECT_ROOT/install.sh" --help)"
 [[ "$help_output" == Usage:* ]] || fail 'Installer help did not print usage.'

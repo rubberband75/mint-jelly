@@ -56,6 +56,7 @@ installer_verification_description() {
   case "${INSTALLER_VERIFICATION[$1]}" in
     sha256-required) printf 'upstream SHA-256 required' ;;
     signature-required) printf 'upstream signature required' ;;
+    https-and-pinned-git-commit) printf 'HTTPS plus release-tag Git commit pinning; no signed release' ;;
     https-and-deb-metadata) printf 'HTTPS and Debian metadata; no published checksum' ;;
     https-and-archive-layout) printf 'HTTPS and archive validation; no published checksum' ;;
     *) printf '%s' "${INSTALLER_VERIFICATION[$1]}" ;;

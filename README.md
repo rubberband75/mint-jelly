@@ -280,10 +280,10 @@ Independent failures are logged and summarized without hiding a nonzero final
 status. `--dry-run` performs no package download, `sudo`, or installation.
 
 Bundled installers are `datagrip`, `discord`, `google-cloud-cli`, `heroic`,
-`minecraft-launcher`, `postman`, and `slack`. Several vendors do not publish
-checksums for their download endpoints; Mint Jelly displays an explicit warning
-when verification is limited to HTTPS plus package metadata or archive-layout
-validation.
+`minecraft-launcher`, `nvm`, `postman`, and `slack`. Several vendors do not
+publish checksums for their download endpoints; Mint Jelly displays an explicit
+warning when verification is limited to HTTPS plus package metadata,
+source-commit pinning, or archive-layout validation.
 Interactive confirmation acknowledges that warning. An unattended `--yes` run
 must also include `--allow-weak-verification` before any affected installer can
 run. DataGrip and Heroic fail closed unless their release metadata contains a
@@ -300,6 +300,15 @@ the optional packages selected on the second installer-configuration screen.
 The first time this installer is selected, optional packages already installed
 locally are checked automatically; later visits preserve the explicit saved
 selection.
+
+The NVM installer resolves GitHub's latest stable `nvm-sh/nvm` release, resolves
+its tag to one Git commit, downloads that commit's official `install.sh` with
+`curl`, validates the bounded script before executing it, and confirms that the
+resulting checkout matches the resolved version and commit. It uses NVM's
+standard per-user directory and adds the official NVM and Bash-completion loader
+lines to `~/.bashrc` atomically. NVM does not publish a signed release or
+checksum for this install script, so Mint Jelly treats it as limited
+verification and requires the corresponding explicit confirmation.
 
 ## Restore behavior
 

@@ -33,6 +33,8 @@ installers/heroic/installer.conf
 installers/heroic/run.sh
 installers/minecraft-launcher/installer.conf
 installers/minecraft-launcher/run.sh
+installers/nvm/installer.conf
+installers/nvm/run.sh
 installers/postman/installer.conf
 installers/postman/run.sh
 installers/slack/installer.conf

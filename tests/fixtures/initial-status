@@ -1,0 +1,14 @@
+Package: mint-base
+Status: install ok installed
+Architecture: amd64
+Version: 1.0
+
+Package: multi-library
+Status: install ok installed
+Architecture: amd64
+Version: 1.0
+
+Package: removed-base-package
+Status: install ok installed
+Architecture: amd64
+Version: 1.0

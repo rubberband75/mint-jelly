@@ -37,7 +37,7 @@ Usage:
   mint-jelly config remote set-default NAME
   mint-jelly config remote test NAME
   mint-jelly config backup-plugins
-  mint-jelly config apt list|add|remove|select
+  mint-jelly config apt list|add|remove|select [--show-all]
   mint-jelly config installers
   mint-jelly version
   mint-jelly uninstall [--purge] [--yes]

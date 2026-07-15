@@ -25,7 +25,7 @@ Usage:
   $command_name apt list
   $command_name apt add PACKAGE...
   $command_name apt remove PACKAGE...
-  $command_name apt select
+  $command_name apt select [--show-all]
   $command_name installers
 EOF
 }

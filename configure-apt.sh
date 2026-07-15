@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Manage the curated APT package list saved for future recovery.
+# Manage the APT package list saved for future recovery.
 
 set -euo pipefail
 
@@ -11,9 +11,12 @@ source "$SCRIPT_DIR/lib/config.sh"
 # shellcheck source=lib/checklist.sh
 source "$SCRIPT_DIR/lib/checklist.sh"
 
-APT_CATALOG_FILE="${MINT_JELLY_APT_CATALOG:-$SCRIPT_DIR/catalogs/apt-packages.txt}"
+APT_INITIAL_STATUS_FILE="${MINT_JELLY_APT_INITIAL_STATUS_FILE:-/var/log/installer/initial-status.gz}"
 APT_INSTALLED_PACKAGES_LOADED=false
+APT_INITIAL_PACKAGES_STATE='unknown'
 declare -A APT_INSTALLED_VERSION=()
+APT_INSTALLED_PACKAGE_NAMES=()
+declare -A APT_INITIAL_PACKAGE=()
 
 usage() {
   local command_name="${MINT_JELLY_COMMAND:-mint-jelly config apt}"
@@ -23,7 +26,11 @@ Usage:
   $command_name list
   $command_name add PACKAGE...
   $command_name remove PACKAGE...
-  $command_name select
+  $command_name select [--show-all]
+
+By default, select shows manually marked packages that were not present in
+Linux Mint's initial installation snapshot. --show-all includes every
+currently installed APT package.
 EOF
 }
 
@@ -42,12 +49,20 @@ package_is_configured() {
 }
 
 load_installed_packages() {
-  local package status version base_package
+  local package status version base_package query_output
 
   [[ "$APT_INSTALLED_PACKAGES_LOADED" == 'false' ]] || return 0
   APT_INSTALLED_VERSION=()
+  APT_INSTALLED_PACKAGE_NAMES=()
+  if ! query_output="$(
+    dpkg-query -W -f='${binary:Package}\t${db:Status-Abbrev}\t${Version}\n' 2>&1
+  )"; then
+    die "Could not read installed APT packages: ${query_output:-dpkg-query failed without a diagnostic}"
+  fi
   while IFS=$'\t' read -r package status version; do
     [[ "$status" == 'ii ' ]] || continue
+    validate_package_name "$package" || continue
+    APT_INSTALLED_PACKAGE_NAMES+=("$package")
     APT_INSTALLED_VERSION["$package"]="$version"
     # Also make the native/unqualified name addressable. Keep the first
     # installed architecture when multiple foreign architectures are present.
@@ -55,8 +70,74 @@ load_installed_packages() {
     if [[ -z "${APT_INSTALLED_VERSION[$base_package]+set}" ]]; then
       APT_INSTALLED_VERSION["$base_package"]="$version"
     fi
-  done < <(dpkg-query -W -f='${binary:Package}\t${db:Status-Abbrev}\t${Version}\n' 2>/dev/null || true)
+  done <<< "$query_output"
   APT_INSTALLED_PACKAGES_LOADED=true
+}
+
+load_initial_packages() {
+  local contents line package='' architecture=''
+
+  case "$APT_INITIAL_PACKAGES_STATE" in
+    available) return 0 ;;
+    unavailable) return 1 ;;
+  esac
+
+  APT_INITIAL_PACKAGE=()
+  if [[ ! -r "$APT_INITIAL_STATUS_FILE" ]]; then
+    APT_INITIAL_PACKAGES_STATE='unavailable'
+    return 1
+  fi
+
+  if [[ "$APT_INITIAL_STATUS_FILE" == *.gz ]]; then
+    if ! command -v gzip >/dev/null 2>&1; then
+      warn "Cannot read Mint's initial package snapshot because gzip is unavailable: $APT_INITIAL_STATUS_FILE"
+      APT_INITIAL_PACKAGES_STATE='unavailable'
+      return 1
+    fi
+    if ! contents="$(gzip -cd -- "$APT_INITIAL_STATUS_FILE" 2>/dev/null)"; then
+      warn "Cannot read Mint's initial package snapshot: $APT_INITIAL_STATUS_FILE"
+      APT_INITIAL_PACKAGES_STATE='unavailable'
+      return 1
+    fi
+  else
+    if ! contents="$(<"$APT_INITIAL_STATUS_FILE")"; then
+      warn "Cannot read Mint's initial package snapshot: $APT_INITIAL_STATUS_FILE"
+      APT_INITIAL_PACKAGES_STATE='unavailable'
+      return 1
+    fi
+  fi
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    case "$line" in
+      'Package: '*)
+        if validate_package_name "$package"; then
+          APT_INITIAL_PACKAGE["$package"]=1
+          if [[ -n "$architecture" ]]; then
+            APT_INITIAL_PACKAGE["$package:$architecture"]=1
+          fi
+        fi
+        package="${line#Package: }"
+        architecture=''
+        ;;
+      'Architecture: '*)
+        architecture="${line#Architecture: }"
+        validate_safe_name "$architecture" || architecture=''
+        ;;
+    esac
+  done <<< "$contents"
+  if validate_package_name "$package"; then
+    APT_INITIAL_PACKAGE["$package"]=1
+    if [[ -n "$architecture" ]]; then
+      APT_INITIAL_PACKAGE["$package:$architecture"]=1
+    fi
+  fi
+
+  if (( ${#APT_INITIAL_PACKAGE[@]} == 0 )); then
+    warn "Mint's initial package snapshot contains no valid packages: $APT_INITIAL_STATUS_FILE"
+    APT_INITIAL_PACKAGES_STATE='unavailable'
+    return 1
+  fi
+  APT_INITIAL_PACKAGES_STATE='available'
 }
 
 installed_package_version() {
@@ -145,17 +226,37 @@ remove_packages() {
   log "Removed APT packages: $*"
 }
 
-load_catalog_packages() {
-  local raw package
+discover_selectable_packages() {
+  local show_all="$1"
+  local manual_output package
+  local -a discovered=("${APT_PACKAGES[@]}")
 
-  [[ -r "$APT_CATALOG_FILE" ]] || die "APT package catalog is missing: $APT_CATALOG_FILE"
-  while IFS= read -r raw || [[ -n "$raw" ]]; do
-    package="$(trim "${raw%%#*}")"
-    [[ -z "$package" ]] && continue
-    validate_package_name "$package" \
-      || die "APT package catalog contains an invalid name: $package"
-    printf '%s\n' "$package"
-  done < "$APT_CATALOG_FILE"
+  load_installed_packages
+  if [[ "$show_all" == 'true' ]]; then
+    discovered+=("${APT_INSTALLED_PACKAGE_NAMES[@]}")
+  else
+    if ! manual_output="$(apt-mark showmanual 2>&1)"; then
+      printf 'Could not read manually marked APT packages: %s\n' \
+        "${manual_output:-apt-mark failed without a diagnostic}" >&2
+      return 1
+    fi
+    if ! load_initial_packages; then
+      warn "Mint's initial package snapshot is unavailable; showing all manually marked packages instead."
+    fi
+    while IFS= read -r package || [[ -n "$package" ]]; do
+      validate_package_name "$package" || continue
+      installed_package_version "$package" >/dev/null || continue
+      if [[ "$APT_INITIAL_PACKAGES_STATE" == 'available' \
+        && -n "${APT_INITIAL_PACKAGE[$package]+set}" ]]; then
+        continue
+      fi
+      discovered+=("$package")
+    done <<< "$manual_output"
+  fi
+
+  if (( ${#discovered[@]} > 0 )); then
+    printf '%s\n' "${discovered[@]}" | sed '/^$/d' | LC_ALL=C sort -u
+  fi
 }
 
 confirm_large_package_selection() {
@@ -191,19 +292,18 @@ package_selection_is_unchanged() {
 }
 
 select_packages() {
-  local package version detail status original_count final_count
+  local show_all="$1"
+  local package version detail status original_count final_count candidate_output
   local -a candidates=() packages=()
 
-  require_cmd apt-mark
+  [[ "$show_all" == 'true' ]] || require_cmd apt-mark
   require_cmd dpkg-query
   load_installed_packages
-  mapfile -t candidates < <(
-    {
-      printf '%s\n' "${APT_PACKAGES[@]}"
-      load_catalog_packages
-      apt-mark showmanual 2>/dev/null || true
-    } | sed '/^$/d' | LC_ALL=C sort -u
-  )
+  candidate_output="$(discover_selectable_packages "$show_all")" \
+    || die 'Could not determine selectable APT packages.'
+  if [[ -n "$candidate_output" ]]; then
+    mapfile -t candidates <<< "$candidate_output"
+  fi
 
   for package in "${candidates[@]}"; do
     validate_package_name "$package" && packages+=("$package")
@@ -227,8 +327,13 @@ select_packages() {
     fi
     CHECKLIST_DETAILS+=("$detail")
   done
-  CHECKLIST_TITLE="Select APT packages for recovery (${#packages[@]} candidates)"
-  CHECKLIST_NOTE="Select all affects all ${#packages[@]} candidates. Installed packages remain selectable because this is a recovery list."
+  if [[ "$show_all" == 'true' ]]; then
+    CHECKLIST_TITLE="Select installed APT packages for recovery (${#packages[@]} candidates)"
+    CHECKLIST_NOTE="Showing every installed package. Select all affects all ${#packages[@]} candidates, including dependencies and Linux Mint system packages."
+  else
+    CHECKLIST_TITLE="Select user-installed APT packages for recovery (${#packages[@]} candidates)"
+    CHECKLIST_NOTE="Packages from Mint's initial installation are hidden. Use --show-all to include all installed packages."
+  fi
 
   if checklist_run; then
     :
@@ -257,36 +362,52 @@ select_packages() {
   fi
 }
 
-if [[ $# -eq 1 && ( "$1" == '-h' || "$1" == '--help' ) ]]; then
-  usage
-  exit 0
-fi
+main() {
+  local show_all='false'
 
-require_initialized_config
-config_read
-
-case "${1-}" in
-  list)
-    [[ $# -eq 1 ]] || die 'apt list does not accept arguments.'
-    require_cmd dpkg-query
-    list_packages
-    ;;
-  add)
-    shift
-    add_packages "$@"
-    ;;
-  remove)
-    shift
-    remove_packages "$@"
-    ;;
-  select)
-    [[ $# -eq 1 ]] || die 'apt select does not accept arguments.'
-    select_packages
-    ;;
-  -h|--help|'')
+  if [[ $# -eq 1 && ( "$1" == '-h' || "$1" == '--help' ) ]]; then
     usage
-    ;;
-  *)
-    die "Unknown APT configuration command: $1"
-    ;;
-esac
+    return 0
+  fi
+
+  require_initialized_config
+  config_read
+
+  case "${1-}" in
+    list)
+      [[ $# -eq 1 ]] || die 'apt list does not accept arguments.'
+      require_cmd dpkg-query
+      list_packages
+      ;;
+    add)
+      shift
+      add_packages "$@"
+      ;;
+    remove)
+      shift
+      remove_packages "$@"
+      ;;
+    select)
+      shift
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          --show-all) show_all='true' ;;
+          -h|--help) usage; return 0 ;;
+          *) die "Unknown apt select argument: $1" ;;
+        esac
+        shift
+      done
+      select_packages "$show_all"
+      ;;
+    -h|--help|'')
+      usage
+      ;;
+    *)
+      die "Unknown APT configuration command: $1"
+      ;;
+  esac
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

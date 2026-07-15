@@ -191,10 +191,6 @@ validate_source_tree() {
         [[ "$path" =~ ^backup-plugins/[A-Za-z0-9][A-Za-z0-9._-]*\.sh$ ]] \
           || die "Installation manifest contains a non-runtime path: $path"
         ;;
-      catalogs/*.txt)
-        [[ "$path" =~ ^catalogs/[A-Za-z0-9][A-Za-z0-9._-]*\.txt$ ]] \
-          || die "Installation manifest contains a non-runtime path: $path"
-        ;;
       installers/*/installer.conf|installers/*/run.sh)
         [[ "$path" =~ ^installers/[A-Za-z0-9][A-Za-z0-9._-]*/(installer\.conf|run\.sh)$ ]] \
           || die "Installation manifest contains a non-runtime path: $path"
@@ -217,7 +213,7 @@ validate_source_tree() {
       || die "Required runtime file is missing from install-manifest.txt: $required_path"
   done
 
-  for runtime_directory in lib backup-plugins catalogs installers; do
+  for runtime_directory in lib backup-plugins installers; do
     [[ -d "$SOURCE_DIR/$runtime_directory" \
       && ! -L "$SOURCE_DIR/$runtime_directory" ]] \
       || die "Source tree has a missing or unsafe runtime directory: $runtime_directory"
@@ -232,11 +228,6 @@ validate_source_tree() {
     [[ -n "${manifest_paths[$required_path]+set}" ]] \
       || die "Backup plugin is missing from install-manifest.txt: $required_path"
   done < <(find "$SOURCE_DIR/backup-plugins" -mindepth 1 -maxdepth 1 -type f -name '*.sh' -print0)
-  while IFS= read -r -d '' required_file; do
-    required_path="${required_file#"$SOURCE_DIR/"}"
-    [[ -n "${manifest_paths[$required_path]+set}" ]] \
-      || die "Runtime catalog is missing from install-manifest.txt: $required_path"
-  done < <(find "$SOURCE_DIR/catalogs" -mindepth 1 -maxdepth 1 -type f -name '*.txt' -print0)
   while IFS= read -r -d '' installer_dir; do
     for required_path in installer.conf run.sh; do
       required_file="$installer_dir/$required_path"

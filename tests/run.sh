@@ -331,6 +331,35 @@ COMP_CWORD=3
 _mint_jelly
 assert_contains select "${COMPREPLY[@]}"
 
+COMP_WORDS=(mint-jelly config apt select --s)
+COMP_CWORD=4
+_mint_jelly
+assert_contains --show-all "${COMPREPLY[@]}"
+
+# The default APT selector removes packages from Mint's installation snapshot
+# while preserving configured-but-missing packages. --show-all includes every
+# installed package, including automatically installed dependencies.
+APT_SELECTION_BASELINE="$TEST_ROOT/initial-status.gz"
+gzip -c -- "$PROJECT_ROOT/tests/fixtures/initial-status" \
+  > "$APT_SELECTION_BASELINE"
+(
+  export PATH="$PROJECT_ROOT/tests/fakes/apt-selection:/usr/bin:/bin"
+  export MINT_JELLY_APT_INITIAL_STATUS_FILE="$APT_SELECTION_BASELINE"
+  # shellcheck source=/dev/null
+  source "$TEST_DATA/mint-jelly/current/configure-apt.sh"
+  APT_PACKAGES=(configured-missing)
+
+  mapfile -t default_candidates < <(discover_selectable_packages false)
+  [[ "${default_candidates[*]}" \
+    == 'configured-missing multi-library:i386 user-one user-two:i386' ]] \
+    || fail "Unexpected default APT candidates: ${default_candidates[*]}"
+
+  mapfile -t all_candidates < <(discover_selectable_packages true)
+  [[ "${all_candidates[*]}" \
+    == 'configured-missing dependency-one mint-base multi-library:i386 user-one user-two:i386' ]] \
+    || fail "Unexpected --show-all APT candidates: ${all_candidates[*]}"
+)
+
 # Point the isolated configuration at an isolated local mirror.
 TEST_REMOTE="$TEST_ROOT/remote"
 export TEST_REMOTE

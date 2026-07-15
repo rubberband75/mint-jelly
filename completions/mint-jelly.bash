@@ -84,6 +84,8 @@ _mint_jelly() {
           _mint_jelly_static_words 'list add remove select --help'
         elif [[ "${COMP_WORDS[3]-}" == 'remove' ]]; then
           _mint_jelly_config_values apt-packages
+        elif [[ "${COMP_WORDS[3]-}" == 'select' ]]; then
+          _mint_jelly_static_words '--show-all --help'
         fi
       fi
       ;;

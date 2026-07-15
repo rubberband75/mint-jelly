@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+[[ "${1-}" == '-W' ]] || exit 64
+printf 'mint-base\tii \t1.0\n'
+printf 'user-one\tii \t2.0\n'
+printf 'dependency-one\tii \t3.0\n'
+printf 'user-two:i386\tii \t4.0\n'
+printf 'multi-library:i386\tii \t5.0\n'

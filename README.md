@@ -147,6 +147,7 @@ mint-jelly config apt list
 mint-jelly config apt add git vlc
 mint-jelly config apt remove vlc
 mint-jelly config apt select
+mint-jelly config apt select --show-all
 mint-jelly config installers
 
 mint-jelly version
@@ -211,6 +212,15 @@ Use `mint-jelly config backup-plugins`, `mint-jelly config apt select`, and
 picker. Existing selections are checked when a picker opens; cancelling leaves
 the configuration unchanged. APT packages can also be managed explicitly with
 `config apt add`, `remove`, and `list`.
+
+By default, `config apt select` shows packages marked as manual after Linux
+Mint's initial installation snapshot. This removes the distribution's original
+package set from the selector while retaining configured packages that are not
+currently installed. `config apt select --show-all` includes every installed
+APT package, including automatically installed dependencies and system
+packages. If the installation snapshot is unavailable, Mint Jelly warns and
+falls back to all manually marked packages because APT does not retain exact
+human-install provenance.
 
 These commands change only the local configuration. APT-package and installer
 selection changes reach a remote recovery manifest only after the next

@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# Offline curl replacement for release-bootstrap tests.
+
+set -euo pipefail
+
+output=''
+url=''
+protocol=''
+redirect_protocol=''
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output)
+      [[ $# -ge 2 ]]
+      output="$2"
+      shift 2
+      ;;
+    --proto)
+      [[ $# -ge 2 ]]
+      protocol="$2"
+      shift 2
+      ;;
+    --proto-redir)
+      [[ $# -ge 2 ]]
+      redirect_protocol="$2"
+      shift 2
+      ;;
+    --retry)
+      [[ $# -ge 2 ]]
+      shift 2
+      ;;
+    -* )
+      shift
+      ;;
+    *)
+      [[ -z "$url" ]] || {
+        printf 'Fake release curl received multiple URLs.\n' >&2
+        exit 2
+      }
+      url="$1"
+      shift
+      ;;
+  esac
+done
+
+[[ "$protocol" == '=https' && "$redirect_protocol" == '=https' ]] || {
+  printf 'Release curl did not restrict requests and redirects to HTTPS.\n' >&2
+  exit 2
+}
+[[ "$url" == https://github.com/* && -n "$output" ]] || {
+  printf 'Fake release curl received an unsafe URL or missing output path.\n' >&2
+  exit 2
+}
+[[ -f "${MINT_JELLY_TEST_RELEASE_ARCHIVE:?}" ]] || {
+  printf 'Fake release archive is missing.\n' >&2
+  exit 2
+}
+
+printf '%s\n' "$url" >> "${MINT_JELLY_TEST_CURL_LOG:?}"
+if [[ "$url" == *.sha256 ]]; then
+  archive_name="${url##*/}"
+  archive_name="${archive_name%.sha256}"
+  archive_hash="$(sha256sum "$MINT_JELLY_TEST_RELEASE_ARCHIVE")"
+  archive_hash="${archive_hash%% *}"
+  case "${MINT_JELLY_TEST_CHECKSUM_MODE:-valid}" in
+    valid)
+      printf '%s  %s\n' "$archive_hash" "$archive_name" > "$output"
+      ;;
+    wrong-filename)
+      printf '%s  unexpected-release.tar.gz\n' "$archive_hash" > "$output"
+      ;;
+    extra-entry)
+      printf '%s  %s\n' "$archive_hash" "$archive_name" > "$output"
+      printf '%s  another-file.tar.gz\n' "$archive_hash" >> "$output"
+      ;;
+    bad-hash)
+      printf '%064d  %s\n' 0 "$archive_name" > "$output"
+      ;;
+    *)
+      printf 'Unknown fake checksum mode: %s\n' "$MINT_JELLY_TEST_CHECKSUM_MODE" >&2
+      exit 2
+      ;;
+  esac
+else
+  cp -- "$MINT_JELLY_TEST_RELEASE_ARCHIVE" "$output"
+fi

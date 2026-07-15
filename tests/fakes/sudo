@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+if [[ "${1-}" == '-v' ]]; then
+  exit 0
+fi
+[[ "${1-}" != '--' ]] || shift
+exec "$@"

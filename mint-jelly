@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+# Public Mint Jelly command dispatcher.
+
+set -euo pipefail
+
+require_dispatcher_command() {
+  command -v "$1" >/dev/null 2>&1 || {
+    printf 'Error: Required command not found: %s\n' "$1" >&2
+    exit 1
+  }
+}
+
+resolve_application_root() {
+  local executable
+
+  require_dispatcher_command readlink
+  executable="$(readlink -f -- "${BASH_SOURCE[0]}")"
+  [[ -n "$executable" && -f "$executable" ]] || {
+    printf 'Error: Could not resolve the Mint Jelly installation.\n' >&2
+    exit 1
+  }
+  cd -- "$(dirname -- "$executable")" && pwd -P
+}
+
+usage() {
+  cat <<'EOF'
+Mint Jelly — A tool to preserve your Linux Mint setup
+
+Usage:
+  mint-jelly backup [--remote NAME] [--dry-run]
+  mint-jelly restore [--remote NAME] [--source-host HOSTNAME] [--dry-run] [--yes] [--allow-platform-mismatch]
+  mint-jelly software show [--remote NAME] [--source-host HOSTNAME]
+  mint-jelly software install [--remote NAME] [--source-host HOSTNAME] [OPTIONS]
+  mint-jelly config init
+  mint-jelly config remote add
+  mint-jelly config remote list
+  mint-jelly config remote set-default NAME
+  mint-jelly config remote test NAME
+  mint-jelly config backup-plugins
+  mint-jelly config apt list|add|remove|select
+  mint-jelly config installers
+  mint-jelly version
+  mint-jelly uninstall [--purge] [--yes]
+
+Run "mint-jelly COMMAND --help" for command-specific help.
+EOF
+}
+
+complete_remote_names() {
+  local config_file
+
+  config_file="${MINT_JELLY_CONFIG_FILE:-${MINT_JELLY_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/mint-jelly}/backup.conf}"
+  [[ -r "$config_file" ]] || return 0
+
+  # Completion is deliberately local and side-effect free. The full parser
+  # performs validation when an actual command is run.
+  sed -nE 's/^\[remote[[:space:]]+([A-Za-z0-9][A-Za-z0-9._-]*)\]$/\1/p' \
+    "$config_file"
+}
+
+complete_config_values() {
+  local key="$1"
+  local config_file
+
+  config_file="${MINT_JELLY_CONFIG_FILE:-${MINT_JELLY_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/mint-jelly}/backup.conf}"
+  [[ -r "$config_file" ]] || return 0
+  case "$key" in
+    apt_package)
+      sed -nE 's/^apt_package=([a-z0-9][a-z0-9+.-]+(:[a-z0-9][a-z0-9-]*)?)$/\1/p' "$config_file"
+      ;;
+    installer)
+      sed -nE 's/^installer=([A-Za-z0-9][A-Za-z0-9._-]*)$/\1/p' "$config_file"
+      ;;
+  esac
+}
+
+APP_ROOT="$(resolve_application_root)"
+VERSION_FILE="$APP_ROOT/VERSION"
+[[ -r "$VERSION_FILE" ]] || {
+  printf 'Error: Mint Jelly installation is missing VERSION.\n' >&2
+  exit 1
+}
+MINT_JELLY_VERSION="$(<"$VERSION_FILE")"
+
+case "${1-}" in
+  backup)
+    shift
+    MINT_JELLY_COMMAND='mint-jelly backup' exec "$APP_ROOT/backup.sh" "$@"
+    ;;
+  restore)
+    shift
+    MINT_JELLY_COMMAND='mint-jelly restore' exec "$APP_ROOT/restore.sh" "$@"
+    ;;
+  software)
+    shift
+    MINT_JELLY_COMMAND='mint-jelly software' exec "$APP_ROOT/software.sh" "$@"
+    ;;
+  config)
+    shift
+    MINT_JELLY_COMMAND='mint-jelly config' exec "$APP_ROOT/configure.sh" "$@"
+    ;;
+  version|--version)
+    [[ $# -eq 1 ]] || {
+      printf 'Error: version does not accept arguments.\n' >&2
+      exit 1
+    }
+    printf 'mint-jelly %s\n' "$MINT_JELLY_VERSION"
+    ;;
+  uninstall)
+    shift
+    exec "$APP_ROOT/uninstall.sh" "$@"
+    ;;
+  __complete)
+    case "${2-}" in
+      remotes) complete_remote_names ;;
+      apt-packages) complete_config_values apt_package ;;
+      installers) complete_config_values installer ;;
+    esac
+    ;;
+  help|-h|--help|'')
+    usage
+    ;;
+  *)
+    printf 'Error: Unknown command: %s\n\n' "$1" >&2
+    usage >&2
+    exit 1
+    ;;
+esac

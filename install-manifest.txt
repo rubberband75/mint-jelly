@@ -1,0 +1,37 @@
+# Runtime files copied into each installed version.
+# install.sh verifies that every runtime library, catalog, backup plugin, and
+# installer module is listed here, rejects test/development paths, and assigns
+# executable modes from each path's runtime role rather than source metadata.
+VERSION
+README.md
+mint-jelly
+backup.sh
+restore.sh
+software.sh
+configure.sh
+configure-backup-plugins.sh
+configure-installers.sh
+configure-apt.sh
+uninstall.sh
+backup.conf.default
+lib/common.sh
+lib/config.sh
+lib/backup-plugins.sh
+lib/checklist.sh
+lib/installers.sh
+lib/recovery.sh
+lib/remote.sh
+backup-plugins/firefox.sh
+backup-plugins/cinnamon-desktop.sh
+catalogs/apt-packages.txt
+installers/discord/installer.conf
+installers/discord/run.sh
+installers/heroic/installer.conf
+installers/heroic/run.sh
+installers/minecraft-launcher/installer.conf
+installers/minecraft-launcher/run.sh
+installers/postman/installer.conf
+installers/postman/run.sh
+installers/slack/installer.conf
+installers/slack/run.sh
+completions/mint-jelly.bash

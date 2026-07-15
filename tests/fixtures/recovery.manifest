@@ -1,0 +1,9 @@
+format=1
+hostname=TESTHOST
+os_id=linuxmint
+os_version=22.3
+ubuntu_codename=noble
+architecture=amd64
+source=/home/tester/.ssh
+apt_package=mint-jelly-test-package
+installer=postman

@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+# The test recovery package is deliberately reported as absent.
+if [[ "${MINT_JELLY_TEST_DPKG_QUERY_ERROR:-false}" == 'true' ]]; then
+  printf 'simulated dpkg database failure\n' >&2
+  exit 2
+fi
+exit 1

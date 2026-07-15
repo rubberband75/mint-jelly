@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+printf 'apt-get' >> "$MINT_JELLY_TEST_LOG"
+printf ' %s' "$@" >> "$MINT_JELLY_TEST_LOG"
+printf '\n' >> "$MINT_JELLY_TEST_LOG"

@@ -1,0 +1,16 @@
+# Suggested packages available from standard Linux Mint repositories.
+# Add/remove entries here to change the interactive catalog. The user's
+# configured recovery list remains independent of this file.
+ca-certificates
+curl
+ffmpeg
+fortune-mod
+gimp
+git
+guake
+imagemagick
+inkscape
+obs-studio
+screen
+tar
+vlc

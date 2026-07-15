@@ -1,0 +1,6 @@
+# Sources and discovery plugins used for a new Mint Jelly configuration.
+version=1
+history_keep=5
+source=~/.ssh
+backup_plugin=firefox
+backup_plugin=cinnamon-desktop

@@ -60,7 +60,7 @@ _mint_jelly() {
   action="${COMP_WORDS[2]-}"
 
   if (( COMP_CWORD == 1 )); then
-    _mint_jelly_static_words 'backup restore files software system-settings apt flatpak config version uninstall help --help --version'
+    _mint_jelly_static_words 'backup restore files repos software system-settings apt flatpak config version uninstall help --help --version'
     return
   fi
 
@@ -103,6 +103,34 @@ _mint_jelly() {
         _mint_jelly_remote_options '--remote --source-host --help'
       elif [[ "$action" == 'restore' ]]; then
         _mint_jelly_remote_options '--remote --source-host --dry-run --yes --force --allow-platform-mismatch --help'
+      fi
+      ;;
+    repos)
+      if (( COMP_CWORD == 2 )); then
+        _mint_jelly_static_words 'add remove include exclude uninclude unexclude list config list-remote backup restore --help'
+      elif [[ "$action" == 'remove' || "$action" == 'include' || "$action" == 'exclude' \
+        || "$action" == 'uninclude' || "$action" == 'unexclude' ]]; then
+        if (( COMP_CWORD == 3 )); then _mint_jelly_dynamic_values repositories; fi
+      elif [[ "$action" == 'backup' ]]; then
+        if [[ "$prev" == '--remote' ]]; then
+          _mint_jelly_remote_names
+        elif [[ "$cur" == --* ]]; then
+          _mint_jelly_static_words '--remote --dry-run --help'
+        else
+          _mint_jelly_dynamic_values repositories
+        fi
+      elif [[ "$action" == 'restore' ]]; then
+        if [[ "$prev" == '--remote' ]]; then
+          _mint_jelly_remote_names
+        elif [[ "$prev" == '--source-host' ]]; then
+          _mint_jelly_static_words "$(hostname 2>/dev/null)"
+        elif [[ "$cur" == --* ]]; then
+          _mint_jelly_static_words '--remote --source-host --dry-run --yes --force --allow-platform-mismatch --help'
+        else
+          _mint_jelly_dynamic_values repositories
+        fi
+      elif [[ "$action" == 'list-remote' ]]; then
+        _mint_jelly_remote_options '--remote --source-host --help'
       fi
       ;;
     system-settings)

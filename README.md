@@ -1,33 +1,35 @@
 # Mint Jelly
 
 Mint Jelly rebuilds a Linux Mint workstation after a clean installation. It
-records software, selected application configuration, personal files, and
-explicit Cinnamon settings in atomic snapshot generations on a local or SSH
-backup target.
+records software, selected application configuration, personal files, local
+Git repositories, and explicit Cinnamon settings in atomic snapshot
+generations on a local or SSH backup target.
 
-The current configuration and snapshot formats are version 2. Version 1 data
-is intentionally unsupported; Mint Jelly is pre-release software and favors a
-clean design over migration code.
+The current configuration and snapshot formats are version 3. Older formats
+are intentionally unsupported; Mint Jelly is pre-release software and favors
+a clean design over migration code.
 
 ## Recovery model
 
-Mint Jelly has three backup domains:
+Mint Jelly has four backup domains:
 
 - `files`: arbitrary paths chosen by the user.
 - `software`: configured APT packages, Flatpak applications, bundled
   installers, and known application configuration profiles.
+- `repositories`: explicitly registered local Git repositories, including
+  unpushed history and selected ignored local files.
 - `system-settings`: narrow Cinnamon System Settings profiles.
 
-`mint-jelly backup` and `mint-jelly restore` operate on all three domains.
+`mint-jelly backup` and `mint-jelly restore` operate on all four domains.
 Domain commands operate only on that domain. A scoped backup copies forward
 the other domains from the current generation and atomically commits a new
 generation, so a failed backup never replaces the last restorable snapshot.
 
-A restore validates the snapshot, installs software, restores arbitrary files
-and application data, restores settings assets, and finally applies GSettings
-values. Existing file or application configuration paths require confirmation;
-use `--force` for an unattended overwrite. `--yes` confirms the overall
-operation but does not imply `--force`.
+A restore validates the snapshot, installs software, restores arbitrary files,
+application data, and repositories, restores settings assets, and finally
+applies GSettings values. Existing paths require confirmation; use `--force`
+for an unattended replacement. `--yes` confirms the overall operation but does
+not imply `--force`.
 
 Hardware-bound settings restore automatically when the machine fingerprint
 matches. On replacement hardware they are shown as skipped; use
@@ -46,6 +48,17 @@ mint-jelly files list
 mint-jelly files list-remote
 mint-jelly files backup
 mint-jelly files restore [--yes] [--force]
+
+mint-jelly repos add NAME PATH
+mint-jelly repos remove NAME
+mint-jelly repos include NAME RELATIVE_PATH...
+mint-jelly repos exclude NAME RELATIVE_PATH...
+mint-jelly repos uninclude NAME RELATIVE_PATH...
+mint-jelly repos unexclude NAME RELATIVE_PATH...
+mint-jelly repos list
+mint-jelly repos list-remote
+mint-jelly repos backup [NAME...]
+mint-jelly repos restore [NAME...] [--yes] [--force]
 
 mint-jelly software config
 mint-jelly software list
@@ -96,6 +109,50 @@ mint-jelly flatpak config
 
 Their recovery plan and application data are backed up by `software backup`,
 not separate APT or Flatpak snapshots.
+
+## Git repositories
+
+Repositories are a separate recovery domain rather than arbitrary `files`
+paths. Each configured repository stores a sanitized bare mirror for reachable
+Git objects and refs, a filtered copy of the current worktree, and inert
+metadata describing HEAD, remotes, upstreams, and content checksums. The
+original remote is never required during restore, so local branches, tags,
+stashes, and unpushed commits remain recoverable.
+
+The worktree copy contains every existing tracked file, ordinary untracked
+files that Git does not ignore, and explicitly included ignored paths. It
+always excludes `.git` administration data and excludes untracked
+`node_modules` by default. Backup rules do not alter the repository's
+`.gitignore`.
+
+For example:
+
+```bash
+mint-jelly repos add solle-docker ~/Development/Solle/docker
+mint-jelly repos include solle-docker .env .vscode
+mint-jelly repos backup solle-docker
+```
+
+Include and exclude paths are literal repository-relative paths. An include
+must exist during backup, which prevents a typo from silently omitting a secret
+or other irreplaceable local file. Tracked files cannot be excluded. Dirty file
+contents are preserved, but restored changes are deliberately unstaged.
+
+Mint Jelly builds and validates repository mirrors locally and copies them to
+the snapshot as inert data; it never executes Git on the backup host. Restore
+downloads and verifies the artifact in a private temporary directory, builds a
+complete replacement beside the destination, and only then moves it into
+place. `--force` replaces an existing repository after successful staging; it
+does not merge backup data into an existing checkout.
+
+Repository backup currently refuses states it cannot promise to recover
+completely, including active merge/rebase operations, shallow or partial
+clones, sparse/linked worktrees, initialized submodules, and repositories with
+uncaptured Git LFS data.
+
+Ignored `.env` files commonly contain credentials. Snapshot permissions and
+SSH protect access and transport, but snapshots are not encrypted at rest;
+the backup destination must be treated as secret-bearing storage.
 
 ## Application data
 
@@ -158,7 +215,7 @@ The configuration lives at
 data, never sourced.
 
 ```ini
-version=2
+version=3
 default_remote=nas
 history_keep=5
 file=~/.ssh
@@ -168,6 +225,12 @@ system_setting=desktop
 apt_package=firefox
 installer=postman
 flatpak_app=user|flathub|com.discordapp.Discord|stable
+
+[repository solle-docker]
+path=~/Development/Solle/docker
+include=.env
+include=.vscode
+exclude=node_modules
 
 [remote nas]
 type=ssh

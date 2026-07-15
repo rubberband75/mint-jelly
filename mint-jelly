@@ -34,6 +34,7 @@ Usage:
   mint-jelly software uninstall INSTALLER... [--purge]
   mint-jelly software list|config|backup|list-remote|restore
   mint-jelly files config|add|remove|list|list-remote|backup|restore
+  mint-jelly repos add|remove|include|exclude|uninclude|unexclude|list|config|list-remote|backup|restore
   mint-jelly system-settings config|list|list-remote|backup|restore
   mint-jelly apt install|add|remove|list|config
   mint-jelly flatpak install|add|remove|list|config
@@ -58,6 +59,15 @@ complete_remote_names() {
   # Completion is deliberately local and side-effect free. The full parser
   # performs validation when an actual command is run.
   sed -nE 's/^\[remote[[:space:]]+([A-Za-z0-9][A-Za-z0-9._-]*)\]$/\1/p' \
+    "$config_file"
+}
+
+complete_repository_names() {
+  local config_file
+
+  config_file="${MINT_JELLY_CONFIG_FILE:-${MINT_JELLY_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/mint-jelly}/config.ini}"
+  [[ -r "$config_file" ]] || return 0
+  sed -nE 's/^\[repository[[:space:]]+([A-Za-z0-9][A-Za-z0-9._-]*)\]$/\1/p' \
     "$config_file"
 }
 
@@ -116,6 +126,10 @@ case "${1-}" in
     shift
     MINT_JELLY_COMMAND='mint-jelly files' exec "$APP_ROOT/commands/files.sh" "$@"
     ;;
+  repos)
+    shift
+    MINT_JELLY_COMMAND='mint-jelly repos' exec "$APP_ROOT/commands/repos.sh" "$@"
+    ;;
   system-settings)
     shift
     MINT_JELLY_COMMAND='mint-jelly system-settings' exec "$APP_ROOT/commands/system-settings.sh" "$@"
@@ -150,6 +164,7 @@ case "${1-}" in
       installers) complete_config_values installer ;;
       flatpaks) complete_config_values flatpak ;;
       installer-catalog) complete_available_installers ;;
+      repositories) complete_repository_names ;;
     esac
     ;;
   help|-h|--help|'')

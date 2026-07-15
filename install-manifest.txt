@@ -9,6 +9,7 @@ backup.sh
 restore.sh
 commands/software.sh
 commands/files.sh
+commands/repos.sh
 commands/system-settings.sh
 commands/apt.sh
 commands/flatpak.sh
@@ -19,9 +20,11 @@ uninstall.sh
 backup.conf.default
 lib/common.sh
 lib/config.sh
+lib/domains.sh
 lib/checklist.sh
 lib/installers.sh
 lib/recovery.sh
+lib/repositories.sh
 lib/remote.sh
 lib/plans.sh
 lib/snapshots.sh

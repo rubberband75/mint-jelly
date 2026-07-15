@@ -5,7 +5,7 @@ set -euo pipefail
 umask 022
 
 REPOSITORY="${MINT_JELLY_REPOSITORY:-rubberband75/mint-jelly}"
-REQUESTED_VERSION="${MINT_JELLY_VERSION:-0.1.0}"
+REQUESTED_VERSION="${MINT_JELLY_VERSION:-0.2.0}"
 TEMP_DIR=''
 STAGE_DIR=''
 EXPECTED_VERSION=''
@@ -161,6 +161,7 @@ validate_source_tree() {
     restore.sh
     commands/software.sh
     commands/files.sh
+    commands/repos.sh
     commands/system-settings.sh
     commands/apt.sh
     commands/flatpak.sh

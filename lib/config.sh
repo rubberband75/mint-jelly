@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 
-CONFIG_VERSION='2'
+CONFIG_VERSION='3'
 DEFAULT_REMOTE=''
 HISTORY_KEEP='5'
 FILE_SPECS=()
+REPOSITORY_NAMES=()
 APPLICATIONS=()
 SYSTEM_SETTINGS=()
 APT_PACKAGES=()
@@ -11,17 +12,26 @@ INSTALLERS=()
 INSTALLER_OPTION_SELECTIONS=()
 FLATPAK_APPS=()
 REMOTE_NAMES=()
+declare -Ag REPOSITORY_PATH=()
+declare -Ag REPOSITORY_INCLUDES=()
+declare -Ag REPOSITORY_EXCLUDES=()
 declare -Ag REMOTE_TYPE=()
 declare -Ag REMOTE_HOST=()
 declare -Ag REMOTE_USERNAME=()
 declare -Ag REMOTE_PORT=()
 declare -Ag REMOTE_ROOT_PATH=()
 
+# Repository include/exclude values cannot contain control characters, so an
+# ASCII record separator is an unambiguous in-memory array encoding on every
+# Bash version supported by Linux Mint.
+REPOSITORY_VALUE_SEPARATOR=$'\036'
+
 config_reset() {
-  CONFIG_VERSION='2'
+  CONFIG_VERSION='3'
   DEFAULT_REMOTE=''
   HISTORY_KEEP='5'
   FILE_SPECS=()
+  REPOSITORY_NAMES=()
   APPLICATIONS=()
   SYSTEM_SETTINGS=()
   APT_PACKAGES=()
@@ -29,6 +39,9 @@ config_reset() {
   INSTALLER_OPTION_SELECTIONS=()
   FLATPAK_APPS=()
   REMOTE_NAMES=()
+  REPOSITORY_PATH=()
+  REPOSITORY_INCLUDES=()
+  REPOSITORY_EXCLUDES=()
   REMOTE_TYPE=()
   REMOTE_HOST=()
   REMOTE_USERNAME=()
@@ -78,6 +91,155 @@ validate_file_spec() {
   validate_absolute_path "$resolved"
 }
 
+resolve_repository_path() {
+  resolve_file_spec "$1"
+}
+
+validate_repository_path() {
+  local resolved
+
+  resolved="$(resolve_repository_path "$1")"
+  validate_absolute_path "$resolved"
+}
+
+validate_repository_relative_path() {
+  local path="$1" component
+  local -a components=()
+
+  [[ -n "$path" && "$path" != /* && "$path" != */ && "$path" != *//* ]] \
+    || return 1
+  [[ ! "$path" =~ [[:cntrl:]] ]] || return 1
+  IFS='/' read -r -a components <<< "$path"
+  for component in "${components[@]}"; do
+    [[ -n "$component" && "$component" != '.' && "$component" != '..' \
+      && "$component" != '.git' ]] || return 1
+  done
+}
+
+repository_exists() {
+  [[ -n "${REPOSITORY_PATH[$1]+set}" ]]
+}
+
+config_add_repository_name() {
+  local name="$1"
+
+  if ! repository_exists "$name"; then
+    REPOSITORY_NAMES+=("$name")
+    REPOSITORY_PATH["$name"]=''
+    REPOSITORY_INCLUDES["$name"]=''
+    REPOSITORY_EXCLUDES["$name"]=''
+  fi
+}
+
+config_repository_get_values() {
+  local map_name="$1" name="$2" output_name="$3" encoded value
+  local -n map_ref="$map_name"
+  local -n output_ref="$output_name"
+
+  output_ref=()
+  encoded="${map_ref[$name]-}"
+  while [[ -n "$encoded" ]]; do
+    if [[ "$encoded" == *"$REPOSITORY_VALUE_SEPARATOR"* ]]; then
+      value="${encoded%%"$REPOSITORY_VALUE_SEPARATOR"*}"
+      encoded="${encoded#*"$REPOSITORY_VALUE_SEPARATOR"}"
+    else
+      value="$encoded"
+      encoded=''
+    fi
+    output_ref+=("$value")
+  done
+}
+
+config_repository_get_includes() {
+  config_repository_get_values REPOSITORY_INCLUDES "$1" "$2"
+}
+
+config_repository_get_excludes() {
+  config_repository_get_values REPOSITORY_EXCLUDES "$1" "$2"
+}
+
+config_repository_value_exists() {
+  local map_name="$1" name="$2" wanted="$3" value
+  local -a values=()
+
+  config_repository_get_values "$map_name" "$name" values
+  for value in "${values[@]}"; do
+    [[ "$value" == "$wanted" ]] && return 0
+  done
+  return 1
+}
+
+config_repository_append_value() {
+  local map_name="$1" name="$2" value="$3"
+  local -n map_ref="$map_name"
+
+  if [[ -n "${map_ref[$name]-}" ]]; then
+    map_ref["$name"]+="$REPOSITORY_VALUE_SEPARATOR$value"
+  else
+    map_ref["$name"]="$value"
+  fi
+}
+
+config_repository_add_include() {
+  config_repository_append_value REPOSITORY_INCLUDES "$1" "$2"
+}
+
+config_repository_add_exclude() {
+  config_repository_append_value REPOSITORY_EXCLUDES "$1" "$2"
+}
+
+config_repository_remove_value() {
+  local map_name="$1" name="$2" removed="$3" value found='false'
+  local -n map_ref="$map_name"
+  local -a values=()
+
+  config_repository_get_values "$map_name" "$name" values
+  map_ref["$name"]=''
+  for value in "${values[@]}"; do
+    if [[ "$value" == "$removed" ]]; then
+      found='true'
+    else
+      config_repository_append_value "$map_name" "$name" "$value"
+    fi
+  done
+  [[ "$found" == 'true' ]]
+}
+
+config_repository_remove_include() {
+  config_repository_remove_value REPOSITORY_INCLUDES "$1" "$2"
+}
+
+config_repository_remove_exclude() {
+  config_repository_remove_value REPOSITORY_EXCLUDES "$1" "$2"
+}
+
+config_remove_repository() {
+  local removed="$1" name
+  local -a retained=()
+
+  for name in "${REPOSITORY_NAMES[@]}"; do
+    [[ "$name" == "$removed" ]] || retained+=("$name")
+  done
+  REPOSITORY_NAMES=("${retained[@]}")
+  unset 'REPOSITORY_PATH[$removed]'
+  unset 'REPOSITORY_INCLUDES[$removed]'
+  unset 'REPOSITORY_EXCLUDES[$removed]'
+}
+
+config_paths_overlap() {
+  local first="$1" second="$2"
+
+  while [[ "$first" == *//* ]]; do first="${first//\/\//\/}"; done
+  while [[ "$second" == *//* ]]; do second="${second//\/\//\/}"; done
+  first="${first%/}"
+  second="${second%/}"
+  [[ "$first" == "$second" || "$first" == "$second/"* || "$second" == "$first/"* ]]
+}
+
+config_repository_rules_overlap() {
+  config_paths_overlap "/$1" "/$2"
+}
+
 remote_exists() {
   [[ -n "${REMOTE_TYPE[$1]+set}" ]]
 }
@@ -119,13 +281,17 @@ config_validate_remote() {
 
 config_validate() {
   local source application setting package installer selection option owner name flatpak_app
+  local repository_name repository_path other_repository include exclude protected
   local flatpak_scope flatpak_remote flatpak_id flatpak_branch flatpak_target
   local -A seen_sources=() seen_applications=() seen_settings=() seen_packages=() seen_installers=()
   local -A seen_installer_options=()
   local -A seen_flatpak_apps=()
   local -A seen_flatpak_targets=()
+  local -A seen_repositories=() resolved_repository_paths=()
+  local -A seen_includes=() seen_excludes=()
+  local -a repository_includes=() repository_excludes=()
 
-  [[ "$CONFIG_VERSION" == '2' ]] \
+  [[ "$CONFIG_VERSION" == '3' ]] \
     || die "Unsupported configuration version: $CONFIG_VERSION"
   [[ "$HISTORY_KEEP" =~ ^(0|[1-9][0-9]*)$ ]] \
     || die 'history_keep must be a non-negative integer without leading zeroes.'
@@ -135,6 +301,62 @@ config_validate() {
     [[ -z "${seen_sources[$source]+set}" ]] \
       || die "Backup source is listed more than once: $source"
     seen_sources["$source"]=1
+  done
+
+  for repository_name in "${REPOSITORY_NAMES[@]}"; do
+    validate_safe_name "$repository_name" \
+      || die "Invalid repository name: $repository_name"
+    [[ -z "${seen_repositories[$repository_name]+set}" ]] \
+      || die "Repository is configured more than once: $repository_name"
+    seen_repositories["$repository_name"]=1
+
+    repository_path="${REPOSITORY_PATH[$repository_name]-}"
+    [[ -n "$repository_path" ]] \
+      || die "Repository '$repository_name' must define exactly one path."
+    validate_repository_path "$repository_path" \
+      || die "Repository '$repository_name' path must be ~/... or a safe absolute path other than /: $repository_path"
+    repository_path="$(resolve_repository_path "$repository_path")"
+
+    for protected in "$MINT_JELLY_CONFIG_DIR" "$MINT_JELLY_STATE_DIR" "$MINT_JELLY_CACHE_DIR"; do
+      if config_paths_overlap "$repository_path" "$protected"; then
+        die "Repository '$repository_name' overlaps Mint Jelly internal data: $protected"
+      fi
+    done
+
+    for source in "${FILE_SPECS[@]}"; do
+      if config_paths_overlap "$repository_path" "$(resolve_file_spec "$source")"; then
+        die "Repository '$repository_name' overlaps configured file path: $source"
+      fi
+    done
+    for other_repository in "${!resolved_repository_paths[@]}"; do
+      if config_paths_overlap "$repository_path" "${resolved_repository_paths[$other_repository]}"; then
+        die "Repository '$repository_name' overlaps repository '$other_repository'."
+      fi
+    done
+    resolved_repository_paths["$repository_name"]="$repository_path"
+
+    config_repository_get_includes "$repository_name" repository_includes
+    config_repository_get_excludes "$repository_name" repository_excludes
+    seen_includes=()
+    seen_excludes=()
+    for include in "${repository_includes[@]}"; do
+      validate_repository_relative_path "$include" \
+        || die "Repository '$repository_name' has an unsafe include path: $include"
+      [[ -z "${seen_includes[$include]+set}" ]] \
+        || die "Repository '$repository_name' include is listed more than once: $include"
+      seen_includes["$include"]=1
+    done
+    for exclude in "${repository_excludes[@]}"; do
+      validate_repository_relative_path "$exclude" \
+        || die "Repository '$repository_name' has an unsafe exclude path: $exclude"
+      [[ -z "${seen_excludes[$exclude]+set}" ]] \
+        || die "Repository '$repository_name' exclude is listed more than once: $exclude"
+      seen_excludes["$exclude"]=1
+      for include in "${repository_includes[@]}"; do
+        config_repository_rules_overlap "$include" "$exclude" \
+          && die "Repository '$repository_name' has conflicting include/exclude paths: $include and $exclude"
+      done
+    done
   done
 
   for application in "${APPLICATIONS[@]}"; do
@@ -195,6 +417,13 @@ config_validate() {
 
   for name in "${REMOTE_NAMES[@]}"; do
     config_validate_remote "$name"
+    if [[ "${REMOTE_TYPE[$name]}" == local ]]; then
+      for repository_name in "${!resolved_repository_paths[@]}"; do
+        if config_paths_overlap "${resolved_repository_paths[$repository_name]}" "${REMOTE_ROOT_PATH[$name]}"; then
+          die "Repository '$repository_name' overlaps local backup remote '$name'."
+        fi
+      done
+    fi
   done
 
   if [[ -n "$DEFAULT_REMOTE" ]]; then
@@ -205,8 +434,8 @@ config_validate() {
 
 config_read() {
   local file="${1:-$MINT_JELLY_CONFIG_FILE}"
-  local raw line key value section='' remote_name='' line_number=0
-  local -A seen_global_keys=() seen_remote_keys=()
+  local raw line key value section='' remote_name='' repository_name='' line_number=0
+  local -A seen_global_keys=() seen_remote_keys=() seen_repository_keys=()
 
   [[ -f "$file" ]] || return 1
   config_reset
@@ -224,8 +453,23 @@ config_read() {
         && die "$file:$line_number: duplicate remote '$remote_name'."
       config_add_remote_name "$remote_name"
       section='remote'
+      repository_name=''
       continue
     fi
+
+    if [[ "$line" =~ ^\[repository[[:space:]]+([A-Za-z0-9._-]+)\]$ ]]; then
+      repository_name="${BASH_REMATCH[1]}"
+      validate_safe_name "$repository_name" \
+        || die "$file:$line_number: invalid repository name."
+      repository_exists "$repository_name" \
+        && die "$file:$line_number: duplicate repository '$repository_name'."
+      config_add_repository_name "$repository_name"
+      section='repository'
+      remote_name=''
+      continue
+    fi
+
+    [[ "$line" != \[* ]] || die "$file:$line_number: unknown or malformed section."
 
     [[ "$line" == *=* ]] || die "$file:$line_number: expected key=value."
     key="$(trim "${line%%=*}")"
@@ -243,6 +487,18 @@ config_read() {
         port) REMOTE_PORT["$remote_name"]="$value" ;;
         root_path) REMOTE_ROOT_PATH["$remote_name"]="$value" ;;
         *) die "$file:$line_number: unknown remote key '$key'." ;;
+      esac
+    elif [[ "$section" == 'repository' ]]; then
+      case "$key" in
+        path)
+          [[ -z "${seen_repository_keys["$repository_name:path"]+set}" ]] \
+            || die "$file:$line_number: duplicate path in repository '$repository_name'."
+          seen_repository_keys["$repository_name:path"]=1
+          REPOSITORY_PATH["$repository_name"]="$value"
+          ;;
+        include) config_repository_add_include "$repository_name" "$value" ;;
+        exclude) config_repository_add_exclude "$repository_name" "$value" ;;
+        *) die "$file:$line_number: unknown key '$key' in repository '$repository_name'." ;;
       esac
     else
       case "$key" in
@@ -273,7 +529,8 @@ config_read() {
 
 config_write() {
   local file="${1:-$MINT_JELLY_CONFIG_FILE}"
-  local temp_file source application setting package installer selection flatpak_app name
+  local temp_file source application setting package installer selection flatpak_app name value
+  local -a repository_values=()
 
   config_validate
   ensure_config_dir
@@ -305,6 +562,19 @@ config_write() {
     done
     for flatpak_app in "${FLATPAK_APPS[@]}"; do
       printf 'flatpak_app=%s\n' "$flatpak_app"
+    done
+
+    for name in "${REPOSITORY_NAMES[@]}"; do
+      printf '\n[repository %s]\n' "$name"
+      printf 'path=%s\n' "${REPOSITORY_PATH[$name]}"
+      config_repository_get_includes "$name" repository_values
+      for value in "${repository_values[@]}"; do
+        printf 'include=%s\n' "$value"
+      done
+      config_repository_get_excludes "$name" repository_values
+      for value in "${repository_values[@]}"; do
+        printf 'exclude=%s\n' "$value"
+      done
     done
 
     for name in "${REMOTE_NAMES[@]}"; do

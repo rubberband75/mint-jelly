@@ -21,7 +21,8 @@ usage() {
 Usage: mint-jelly uninstall [--purge] [--yes]
 
 Removes the Mint Jelly application, launcher, and Bash completion.
-Configuration and state are preserved unless --purge is specified.
+Configuration, state, and repository caches are preserved unless --purge is
+specified.
 EOF
 }
 
@@ -66,11 +67,14 @@ done < "$INSTALL_ROOT/.install-paths"
 
 CONFIG_DIR="${MINT_JELLY_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/mint-jelly}"
 STATE_DIR="${MINT_JELLY_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/mint-jelly}"
+CACHE_DIR="${MINT_JELLY_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/mint-jelly}"
 if [[ "$PURGE" == 'true' ]]; then
   [[ "$CONFIG_DIR" == /* && "$CONFIG_DIR" != '/' && "$CONFIG_DIR" != "$HOME" ]] \
     || die "Unsafe configuration directory: $CONFIG_DIR"
   [[ "$STATE_DIR" == /* && "$STATE_DIR" != '/' && "$STATE_DIR" != "$HOME" ]] \
     || die "Unsafe state directory: $STATE_DIR"
+  [[ "$CACHE_DIR" == /* && "$CACHE_DIR" != '/' && "$CACHE_DIR" != "$HOME" ]] \
+    || die "Unsafe cache directory: $CACHE_DIR"
 fi
 
 if [[ "$ASSUME_YES" != 'true' ]]; then
@@ -111,8 +115,8 @@ rm -rf -- "$INSTALL_ROOT"
 log 'Mint Jelly was uninstalled.'
 
 if [[ "$PURGE" == 'true' ]]; then
-  rm -rf -- "$CONFIG_DIR" "$STATE_DIR"
-  log 'Mint Jelly configuration and state were purged.'
+  rm -rf -- "$CONFIG_DIR" "$STATE_DIR" "$CACHE_DIR"
+  log 'Mint Jelly configuration, state, and repository caches were purged.'
 else
   log "Configuration preserved at: $CONFIG_DIR"
   log "State preserved at: $STATE_DIR"

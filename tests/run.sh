@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Focused v2 CLI, snapshot, installer-lifecycle, and deployment tests.
+# Focused v3 CLI, snapshot, installer-lifecycle, and deployment tests.
 
 set -euo pipefail
 
@@ -9,6 +9,7 @@ TEST_HOME="$TEST_ROOT/home"
 TEST_DATA="$TEST_ROOT/data"
 TEST_CONFIG="$TEST_ROOT/config"
 TEST_STATE="$TEST_ROOT/state"
+TEST_CACHE="$TEST_ROOT/cache"
 TEST_BIN="$TEST_HOME/.local/bin"
 TEST_REMOTE="$TEST_ROOT/remote"
 
@@ -23,7 +24,7 @@ assert_contains() {
   fail "Expected '$wanted'; got: $*"
 }
 
-mkdir -p -- "$TEST_HOME" "$TEST_CONFIG" "$TEST_STATE" "$TEST_REMOTE"
+mkdir -p -- "$TEST_HOME" "$TEST_CONFIG" "$TEST_STATE" "$TEST_CACHE" "$TEST_REMOTE"
 
 while IFS= read -r script; do bash -n "$script" || fail "Syntax error: $script"; done \
   < <(find "$PROJECT_ROOT" -type f -name '*.sh' -print | sort)
@@ -34,12 +35,14 @@ bash "$PROJECT_ROOT/tests/docker-engine-installer.sh" >/dev/null
 bash "$PROJECT_ROOT/tests/google-cloud-cli-installer.sh" >/dev/null
 bash "$PROJECT_ROOT/tests/nvm-installer.sh" >/dev/null
 bash "$PROJECT_ROOT/tests/vscode-installer.sh" >/dev/null
+bash "$PROJECT_ROOT/tests/repositories.sh" >/dev/null
 
 install_env=(
   HOME="$TEST_HOME"
   XDG_DATA_HOME="$TEST_DATA"
   XDG_CONFIG_HOME="$TEST_CONFIG"
   XDG_STATE_HOME="$TEST_STATE"
+  XDG_CACHE_HOME="$TEST_CACHE"
   PATH=/usr/bin:/bin
 )
 env "${install_env[@]}" "$PROJECT_ROOT/install.sh" >/dev/null
@@ -49,18 +52,19 @@ LAUNCHER="$TEST_BIN/mint-jelly"
 COMPLETION="$TEST_DATA/bash-completion/completions/mint-jelly.bash"
 [[ -L "$LAUNCHER" && -x "$LAUNCHER" ]] || fail 'Installer did not create an executable launcher.'
 assert_file "$COMPLETION"
-[[ "$(HOME="$TEST_HOME" XDG_DATA_HOME="$TEST_DATA" "$LAUNCHER" version)" == 'mint-jelly 0.1.0' ]] \
+[[ "$(HOME="$TEST_HOME" XDG_DATA_HOME="$TEST_DATA" "$LAUNCHER" version)" == 'mint-jelly 0.2.0' ]] \
   || fail 'Installed launcher returned the wrong version.'
 
 export HOME="$TEST_HOME"
 export XDG_DATA_HOME="$TEST_DATA"
 export XDG_CONFIG_HOME="$TEST_CONFIG"
 export XDG_STATE_HOME="$TEST_STATE"
+export XDG_CACHE_HOME="$TEST_CACHE"
 export PATH="$TEST_BIN:/usr/bin:/bin"
 
 "$LAUNCHER" config init >/dev/null
-grep -qx 'version=2' "$TEST_CONFIG/mint-jelly/config.ini" \
-  || fail 'config init did not create configuration version 2.'
+grep -qx 'version=3' "$TEST_CONFIG/mint-jelly/config.ini" \
+  || fail 'config init did not create configuration version 3.'
 if grep -q '^backup_plugin=' "$TEST_CONFIG/mint-jelly/config.ini"; then
   fail 'Version 2 configuration still contains backup plugins.'
 fi
@@ -177,12 +181,14 @@ bash -euo pipefail -c '
   [[ "${SYSTEM_SETTING_CLASS[display]}" == hardware ]]
 ' _ "$TEST_DATA/mint-jelly/current" || fail 'System-settings profile boundaries are incorrect.'
 
-# Completion reflects the v2 command hierarchy and safety flags.
+# Completion reflects the v3 command hierarchy and safety flags.
 source "$COMPLETION"
 COMP_WORDS=(mint-jelly f); COMP_CWORD=1; _mint_jelly
 assert_contains files "${COMPREPLY[@]}"
 COMP_WORDS=(mint-jelly system-settings r); COMP_CWORD=2; _mint_jelly
 assert_contains restore "${COMPREPLY[@]}"
+COMP_WORDS=(mint-jelly r); COMP_CWORD=1; _mint_jelly
+assert_contains repos "${COMPREPLY[@]}"
 COMP_WORDS=(mint-jelly software u); COMP_CWORD=2; _mint_jelly
 assert_contains update "${COMPREPLY[@]}"
 assert_contains uninstall "${COMPREPLY[@]}"
@@ -213,5 +219,6 @@ env "${install_env[@]}" "$PROJECT_ROOT/install.sh" >/dev/null
 "$LAUNCHER" uninstall --purge --yes >/dev/null
 assert_not_exists "$TEST_CONFIG/mint-jelly"
 assert_not_exists "$TEST_STATE/mint-jelly"
+assert_not_exists "$TEST_CACHE/mint-jelly"
 
 printf 'All Mint Jelly tests passed.\n'

@@ -1,5 +1,5 @@
-# Mint Jelly v2 recovery configuration.
-version=2
+# Mint Jelly v3 recovery configuration.
+version=3
 history_keep=5
 file=~/.ssh
 application=firefox
